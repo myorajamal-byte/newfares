@@ -78,10 +78,92 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
   const handlePrintContract = async () => {
     try {
       setIsGenerating(true);
-      
+
       // Extract contract data
       const contractData = extractContractData(contract);
-      
+
+      // Normalize billboards and build table pages for printing
+      const billboards: any[] = Array.isArray(contract.billboards) ? contract.billboards : [];
+
+      const normalizeBillboard = (b: any) => {
+        const id = String(b.ID ?? b.id ?? '');
+        const image = String(
+          b.image ?? b.Image ?? b.billboard_image ?? b.Image_URL ?? b['@IMAGE'] ?? b.image_url ?? b.imageUrl ?? ''
+        );
+        const municipality = String(b.Municipality ?? b.municipality ?? b.City_Council ?? b.city_council ?? '');
+        const district = String(b.District ?? b.district ?? b.Area ?? b.area ?? '');
+        const landmark = String(b.Nearest_Landmark ?? b.nearest_landmark ?? b.location ?? b.Location ?? '');
+        const size = String(b.Size ?? b.size ?? b['Billboard size'] ?? '');
+        const faces = String(b.Faces ?? b.faces ?? b.Number_of_Faces ?? b['Number of Faces'] ?? '');
+        const priceVal = b.Price ?? b.rent ?? b.Rent_Price ?? b.Rent ?? b.rent_cost ?? b['Total Rent'];
+        const price =
+          typeof priceVal === 'number'
+            ? `${priceVal.toLocaleString('ar-LY')} د.ل`
+            : (typeof priceVal === 'string' && priceVal.trim() !== '' ? priceVal : '');
+        let coords: string = String(
+          b.GPS_Coordinates ?? b.coords ?? b.coordinates ?? b.GPS ?? ''
+        );
+        if (!coords || coords === 'undefined' || coords === 'null') {
+          const lat = b.Latitude ?? b.lat ?? b.latitude;
+          const lng = b.Longitude ?? b.lng ?? b.longitude;
+          if (lat != null && lng != null) coords = `${lat},${lng}`;
+        }
+        const mapLink = coords ? `https://www.google.com/maps?q=${encodeURIComponent(coords)}` : '#';
+        return { id, image, municipality, district, landmark, size, faces, price, mapLink };
+      };
+
+      const normalizedRows = billboards.map(normalizeBillboard);
+      const ROWS_PER_PAGE = 12; // fits with image thumbnails comfortably
+
+      const tablePagesHtml = normalizedRows.length
+        ? normalizedRows
+            .reduce((pages: any[][], row, idx) => {
+              const p = Math.floor(idx / ROWS_PER_PAGE);
+              if (!pages[p]) pages[p] = [];
+              pages[p].push(row);
+              return pages;
+            }, [])
+            .map((rows) => `
+              <div class="template-container">
+                <img src="/bgc2.jpg" alt="خلفية جدول اللوحات" class="template-image" />
+                <div class="table-area">
+                  <table class="btable" dir="rtl">
+                    <colgroup>
+                      <col style="width:8%" />
+                      <col style="width:14%" />
+                      <col style="width:12%" />
+                      <col style="width:12%" />
+                      <col style="width:18%" />
+                      <col style="width:10%" />
+                      <col style="width:8%" />
+                      <col style="width:10%" />
+                      <col style="width:8%" />
+                    </colgroup>
+                    <tbody>
+                      ${rows
+                        .map(
+                          (r) => `
+                          <tr>
+                            <td class="c-num">${r.id}</td>
+                            <td class="c-img">${r.image ? `<img src="${r.image}" alt="صورة اللوحة" />` : ''}</td>
+                            <td>${r.municipality}</td>
+                            <td>${r.district}</td>
+                            <td>${r.landmark}</td>
+                            <td>${r.size}</td>
+                            <td>${r.faces}</td>
+                            <td>${r.price}</td>
+                            <td>${r.mapLink !== '#' ? `<a href="${r.mapLink}" target="_blank" rel="noopener">اضغط هنا</a>` : ''}</td>
+                          </tr>`
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            `)
+            .join('')
+        : '';
+
       // Create HTML content for printing using the main6 design
       const htmlContent = `
         <!DOCTYPE html>
@@ -92,13 +174,13 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
           <title>عقد إيجار لوحات إعلانية</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap');
-            
+
             * {
               margin: 0;
               padding: 0;
               box-sizing: border-box;
             }
-            
+
             body {
               font-family: 'Noto Sans Arabic', 'Doran', Arial, sans-serif;
               direction: rtl;
@@ -107,7 +189,7 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
               color: #000;
               overflow-x: hidden;
             }
-            
+
             .template-container {
               position: relative;
               width: 100%;
@@ -115,8 +197,9 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
               display: inline-block;
               overflow: hidden;
               margin: 20px auto;
+              page-break-after: always;
             }
-            
+
             .template-image,
             .overlay-svg {
               position: absolute;
@@ -127,12 +210,27 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
               object-fit: contain;
               z-index: 1;
             }
-            
+
             .overlay-svg {
               z-index: 10;
               pointer-events: none;
             }
-            
+
+            /* Table overlay area for bgc2 pages */
+            .table-area {
+              position: absolute;
+              right: 140px;
+              left: 140px;
+              top: 500px;
+              bottom: 310px;
+              z-index: 20;
+            }
+            .btable { width: 100%; border-collapse: collapse; font-size: 26px; }
+            .btable td { border: 1px solid #000; padding: 10px 8px; vertical-align: middle; }
+            .c-img img { width: 120px; height: 70px; object-fit: cover; display: block; margin: 0 auto; }
+            .c-num { text-align: center; font-weight: 700; }
+            .btable a { color: #004aad; text-decoration: none; }
+
             @media print {
               body {
                 padding: 0;
@@ -147,12 +245,12 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
                 display: none;
               }
             }
-            
+
             .controls {
               margin-top: 20px;
               text-align: center;
             }
-            
+
             button {
               padding: 10px 20px;
               font-size: 16px;
@@ -401,7 +499,7 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
                 dominant-baseline="middle"
                 style="direction: rtl; text-align: center"
               >
-                الأخير تكاليف التغيير الناتجة عن الأحوال الجوية أو الحوادث.
+                الأخير تكاليف التغيير الناتجة عن الأحوال ال��وية أو الحوادث.
               </text>
 
               <!-- البند الثالث -->
@@ -467,7 +565,7 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
                 dominant-baseline="middle"
                 style="direction: rtl; text-align: center"
               >
-                لايجوز للطرف الثاني التنازل عن العقد أو التعامل مع جهات أخرى دون موافقة الطرف الأول، الذي يحتفظ بحق.
+                لايجوز للطرف الثاني التنازل عن العقد أو التعامل مع جهات أخرى دون موافقة الطرف الأول، الذي يحتفظ ��حق.
               </text>
               <text
                 x="1530"
@@ -592,17 +690,19 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
               <button onclick="window.print()">طباعة</button>
             </div>
           </div>
+
+          ${tablePagesHtml}
         </body>
         </html>
       `;
-      
+
       // Create a new window and write the HTML content
       const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
-      
+
       if (printWindow) {
         printWindow.document.write(htmlContent);
         printWindow.document.close();
-        
+
         // Wait for images to load, then focus and show print dialog
         printWindow.onload = () => {
           setTimeout(() => {
@@ -613,7 +713,7 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
       } else {
         throw new Error('فشل في فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة.');
       }
-      
+
     } catch (error) {
       console.error('Error opening print window:', error);
       alert('حدث خطأ أثناء فتح نافذة الطباعة: ' + (error as Error).message);

@@ -50,7 +50,7 @@ export default function ContractPDFDialog({ open, onOpenChange, contract }: Cont
     try {
       const contractDetails = calculateContractDetails();
       const year = new Date().getFullYear();
-      
+
       // Extract all contract data automatically
       const contractData = {
         contractNumber: contract?.id || contract?.Contract_Number || '',
@@ -65,6 +65,77 @@ export default function ContractPDFDialog({ open, onOpenChange, contract }: Cont
         phoneNumber: '0912612255'
       };
 
+      // Normalize contract billboards for table pages
+      const rows: any[] = Array.isArray(contract?.billboards) ? contract.billboards : [];
+      const norm = (b: any) => {
+        const id = String(b.ID ?? b.id ?? '');
+        const image = String(b.image ?? b.Image ?? b.billboard_image ?? b.Image_URL ?? b['@IMAGE'] ?? b.image_url ?? b.imageUrl ?? '');
+        const municipality = String(b.Municipality ?? b.municipality ?? '');
+        const district = String(b.District ?? b.district ?? '');
+        const landmark = String(b.Nearest_Landmark ?? b.nearest_landmark ?? b.location ?? '');
+        const size = String(b.Size ?? b.size ?? '');
+        const faces = String(b.Faces ?? b.faces ?? b.Number_of_Faces ?? '');
+        const priceVal = b.Price ?? b.rent ?? b.Rent_Price ?? b.rent_cost ?? b['Total Rent'];
+        const price = typeof priceVal === 'number' ? `${priceVal.toLocaleString('ar-LY')} د.ل` : (priceVal || '');
+        let coords: string = String(b.GPS_Coordinates ?? b.coords ?? b.coordinates ?? b.GPS ?? '');
+        if (!coords || coords === 'undefined' || coords === 'null') {
+          const lat = b.Latitude ?? b.lat ?? b.latitude;
+          const lng = b.Longitude ?? b.lng ?? b.longitude;
+          if (lat != null && lng != null) coords = `${lat},${lng}`;
+        }
+        const mapLink = coords ? `https://www.google.com/maps?q=${encodeURIComponent(coords)}` : '';
+        return { id, image, municipality, district, landmark, size, faces, price, mapLink };
+      };
+      const normalized = rows.map(norm);
+      const ROWS_PER_PAGE = 12;
+      const tablePagesHtml = normalized.length
+        ? normalized
+            .reduce((acc: any[][], r, i) => {
+              const p = Math.floor(i / ROWS_PER_PAGE);
+              (acc[p] ||= []).push(r);
+              return acc;
+            }, [])
+            .map((pageRows) => `
+              <div class="template-container page">
+                <img src="/bgc2.jpg" alt="خلفية جدول اللوحات" class="template-image" />
+                <div class="table-area">
+                  <table class="btable" dir="rtl">
+                    <colgroup>
+                      <col style="width:8%" />
+                      <col style="width:14%" />
+                      <col style="width:12%" />
+                      <col style="width:12%" />
+                      <col style="width:18%" />
+                      <col style="width:10%" />
+                      <col style="width:8%" />
+                      <col style="width:10%" />
+                      <col style="width:8%" />
+                    </colgroup>
+                    <tbody>
+                      ${pageRows
+                        .map(
+                          (r) => `
+                          <tr>
+                            <td class="c-num">${r.id}</td>
+                            <td class="c-img">${r.image ? `<img src="${r.image}" alt="صورة اللوحة" />` : ''}</td>
+                            <td>${r.municipality}</td>
+                            <td>${r.district}</td>
+                            <td>${r.landmark}</td>
+                            <td>${r.size}</td>
+                            <td>${r.faces}</td>
+                            <td>${r.price}</td>
+                            <td>${r.mapLink ? `<a href="${r.mapLink}" target="_blank" rel="noopener">اضغط هنا</a>` : ''}</td>
+                          </tr>`
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            `)
+            .join('')
+        : '';
+
       // Create HTML content for printing - Full A4 size without margins
       const htmlContent = `
         <!DOCTYPE html>
@@ -75,584 +146,98 @@ export default function ContractPDFDialog({ open, onOpenChange, contract }: Cont
           <title>عقد إيجار لوحات إعلانية</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap');
-            
-            * {
-              margin: 0 !important;
-              padding: 0 !important;
-              box-sizing: border-box;
-            }
-            
-            html, body {
-              width: 100% !important;
-              height: 100% !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              overflow: hidden;
-              font-family: 'Noto Sans Arabic', 'Doran', Arial, sans-serif;
-              direction: rtl;
-              text-align: right;
-              background: white;
-              color: #000;
-            }
-            
-            .template-container {
-              position: absolute;
-              top: 0;
-              left: 0;
-              width: 100vw;
-              height: 100vh;
-              margin: 0 !important;
-              padding: 0 !important;
-              overflow: hidden;
-              display: block;
-            }
-            
-            .template-image {
-              position: absolute;
-              top: 0;
-              left: 0;
-              width: 100% !important;
-              height: 100% !important;
-              object-fit: cover;
-              object-position: center;
-              z-index: 1;
-              display: block;
-            }
-            
-            .overlay-svg {
-              position: absolute;
-              top: 0;
-              left: 0;
-              width: 100%;
-              height: 100%;
-              z-index: 10;
-              pointer-events: none;
-            }
-            
+
+            * { margin: 0 !important; padding: 0 !important; box-sizing: border-box; }
+            html, body { width: 100% !important; height: 100% !important; overflow: hidden; font-family: 'Noto Sans Arabic', 'Doran', Arial, sans-serif; direction: rtl; text-align: right; background: white; color: #000; }
+            .template-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; display: block; }
+            .template-image { position: absolute; inset: 0; width: 100% !important; height: 100% !important; object-fit: cover; object-position: center; z-index: 1; display: block; }
+            .overlay-svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+            .page { page-break-after: always; }
+
+            /* Table overlay area for bgc2 pages */
+            .table-area { position: absolute; right: 20mm; left: 20mm; top: 80mm; bottom: 32mm; z-index: 20; }
+            .btable { width: 100%; border-collapse: collapse; font-size: 12pt; }
+            .btable td { border: 1px solid #000; padding: 4pt 3pt; vertical-align: middle; }
+            .c-img img { width: 38mm; height: 22mm; object-fit: cover; display: block; margin: 0 auto; }
+            .c-num { text-align: center; font-weight: 700; }
+            .btable a { color: #004aad; text-decoration: none; }
+
             @media print {
-              html, body {
-                width: 210mm !important;
-                height: 297mm !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow: hidden !important;
-              }
-              
-              .template-container {
-                width: 210mm !important;
-                height: 297mm !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                position: absolute !important;
-                top: 0 !important;
-                left: 0 !important;
-              }
-              
-              .template-image {
-                width: 210mm !important;
-                height: 297mm !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                object-fit: cover !important;
-              }
-              
-              .overlay-svg {
-                width: 210mm !important;
-                height: 297mm !important;
-              }
-              
-              .controls {
-                display: none !important;
-              }
-              
-              @page {
-                size: A4;
-                margin: 0 !important;
-                padding: 0 !important;
-              }
+              html, body { width: 210mm !important; height: 297mm !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+              .template-container { width: 210mm !important; height: 297mm !important; position: relative !important; }
+              .template-image, .overlay-svg { width: 210mm !important; height: 297mm !important; }
+              .controls { display: none !important; }
+              @page { size: A4; margin: 0 !important; padding: 0 !important; }
             }
-            
-            .controls {
-              position: fixed;
-              bottom: 20px;
-              left: 50%;
-              transform: translateX(-50%);
-              z-index: 100;
-              background: rgba(0,0,0,0.8);
-              padding: 10px 20px;
-              border-radius: 5px;
-            }
-            
-            .controls button {
-              padding: 10px 20px;
-              font-size: 16px;
-              background-color: #0066cc;
-              color: white;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-              margin: 0 5px;
-            }
-            
-            .controls button:hover {
-              background-color: #0052a3;
-            }
+            .controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100; background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 5px; }
+            .controls button { padding: 10px 20px; font-size: 16px; background-color: #0066cc; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 0 5px; }
+            .controls button:hover { background-color: #0052a3; }
           </style>
         </head>
         <body>
-          <div class="template-container">
-            <!-- Background image - Full coverage -->
+          <div class="template-container page">
             <img src="/contract-template.png" alt="عقد إيجار لوحات إعلانية" class="template-image" />
-
-            <!-- Overlay SVG - Contract data -->
-            <svg
-              class="overlay-svg"
-              viewBox="0 0 2480 3508"
-              preserveAspectRatio="xMidYMid slice"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <!-- Header: إيجار لمواقع إعلانية رقم: سنة -->
-              <text
-                x="1750"
-                y="700"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="62"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                إيجار لمواقع إعلانية رقم: ${contractData.contractNumber} سنة ${contractData.year}
-              </text>
-
-              <!-- التاريخ -->
-              <text
-                x="440"
-                y="700"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="62"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                التاريخ: ${contractData.startDate}
-              </text>
-
-              <!-- نوع الإعلان -->
-              <text
-                x="2050"
-                y="915"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="62"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                نوع الإعلان: ${contractData.adType}.
-              </text>
-
-              <!-- الطرف الأول -->
-              <text
-                x="2220"
-                y="1140"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                الطرف الأول:
-              </text>
-              <text
-                x="1500"
-                y="1140"
-                font-family="Doran, sans-serif"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                شركة الفارس الذهبي للدعاية والإعلان، طرابلس – طريق المطار، حي الزهور.
-              </text>
-              <text
-                x="1960"
-                y="1200"
-                font-family="Doran, sans-serif"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                يمثلها السيد جمال أحمد زحيل (المدير العام).
-              </text>
-
-              <!-- الطرف الثاني -->
-              <text
-                x="2210"
-                y="1380"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                الطرف الثاني:
-              </text>
-              <text
-                x="1920"
-                y="1380"
-                font-family="Doran, sans-serif"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                ${contractData.customerName}.
-              </text>
-              <text
-                x="1970"
-                y="1440"
-                font-family="Doran, sans-serif"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                يمثلها السيد علي عمار هاتف: ${contractData.phoneNumber}.
-              </text>
-
-              <!-- المقدمة -->
-              <text
-                x="2250"
-                y="1630"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                المقدمة:
-              </text>
-              <text
-                x="1290"
-                y="1630"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                نظرًا لرغبة الطرف الثاني في استئجار مساحات إعلانية من الطرف الأول، تم الاتفاق على الشروط التالية:
-              </text>
-
-              <!-- البند الأول -->
-              <text
-                x="2240"
-                y="1715"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                البند الأول:
-              </text>
-              <text
-                x="1190"
-                y="1715"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                يلتزم الطرف الثاني بتجهيز التصميم في أسرع وقت وأي تأخير يعتبر مسؤوليته، وتبدي مدة العقد من التاريخ .
-              </text>
-              <text
-                x="2095"
-                y="1775"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                المذكور في المادة السادسة
-              </text>
-
-              <!-- البند الثاني -->
-              <text
-                x="2230"
-                y="1890"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                البند الثاني:
-              </text>
-              <text
-                x="1170"
-                y="1890"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                يلتزم الطرف الأول بتعبئة وتركيب التصاميم بدقة على المساحات المتفق عليها وفق الجدول المرفق، ويتحمل .
-              </text>
-              <text
-                x="1850"
-                y="1950"
-                font-family="Doran, sans-serif"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                الأخير تكاليف التغيير الناتجة عن الأحوال الجوية أو الحوادث.
-              </text>
-
-              <!-- البند الثالث -->
-              <text
-                x="2225"
-                y="2065"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                البند الثالث:
-              </text>
-              <text
-                x="1240"
-                y="2065"
-                font-family="Doran, sans-serif"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                في حال وقوع ظروف قاهرة تؤثر على إحدى المساحات، يتم نقل الإعلان إلى موقع بديل، ويتولى الطرف الأول
-              </text>
-              <text
-                x="1890"
-                y="2125"
-                font-family="Doran, sans-serif"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                الحصول على الموافقات اللازمة من الجهات ذات العلاقة.
-              </text>
-
-              <!-- البند الرابع -->
-              <text
-                x="2235"
-                y="2240"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                البند الرابع:
-              </text>
-              <text
-                x="1190"
-                y="2240"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                لايجوز للطرف الثاني التنازل عن العقد أو التعامل مع جهات أخرى دون موافقة الطرف الأول، الذي يحتفظ بحق.
-              </text>
-              <text
-                x="1530"
-                y="2300"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                استغلال المساحات في المناسبات الوطنية و الانتخابات مع تعويض الطرف الثاني بفترة بديلة.
-              </text>
-
-              <!-- البند الخامس – contract amount -->
-              <text
-                x="560"
-                y="2410"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="end"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                قيمة العقد ${contractData.price} دينار ليبي بدون طباعة، دفع عند توقيع العقد والنصف الآخر بعد
-              </text>
-              <text
-                x="1640"
-                y="2470"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                التركيب، وإذا تأخر السداد عن 30 يومًا يحق للطرف الأول إعادة تأجير المساحات.
-              </text>
-
-              <!-- البند السادس – duration -->
-              <text
-                x="2210"
-                y="2590"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                البند السادس:
-              </text>
-              <text
-                x="1150"
-                y="2590"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                مدة العقد ${contractData.duration} يومًا تبدأ من ${contractData.startDate} وتنتهي في ${contractData.endDate}، ويجوز تجديده برضى الطرفين قبل
-              </text>
-              <text
-                x="1800"
-                y="2650"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                انتهائه بمدة لا تقل عن 15 يومًا وفق شروط يتم الاتفاق عليها .
-              </text>
-
-              <!-- البند السابع -->
-              <text
-                x="2220"
-                y="2760"
-                font-family="Doran, sans-serif"
-                font-weight="bold"
-                font-size="42"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                البند السابع:
-              </text>
-              <text
-                x="1150"
-                y="2760"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                في حال حدوث خلاف بين الطرفين يتم حلّه وديًا، وإذا تعذر ذلك يُعين طرفان محاميان لتسوية النزاع بقرار نهائي
-              </text>
-              <text
-                x="2200"
-                y="2820"
-                font-family="Doran, sans-serif"
-                font-size="46"
-                fill="#000"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="direction: rtl; text-align: center"
-              >
-                وملزم للطرفين.
-              </text>
+            <svg class="overlay-svg" viewBox="0 0 2480 3508" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+              <text x="1750" y="700" font-family="Doran, sans-serif" font-weight="bold" font-size="62" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">إيجار لمواقع إعلانية رقم: ${contractData.contractNumber} سنة ${contractData.year}</text>
+              <text x="440" y="700" font-family="Doran, sans-serif" font-weight="bold" font-size="62" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">التاريخ: ${contractData.startDate}</text>
+              <text x="2050" y="915" font-family="Doran, sans-serif" font-weight="bold" font-size="62" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">نوع الإعلان: ${contractData.adType}.</text>
+              <text x="2220" y="1140" font-family="Doran, sans-serif" font-weight="bold" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">الطرف الأول:</text>
+              <text x="1500" y="1140" font-family="Doran, sans-serif" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">شركة الفارس الذهبي للدعاية والإعلان، طرابلس – طريق المطار، حي الزهور.</text>
+              <text x="1960" y="1200" font-family="Doran, sans-serif" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">يمثلها السيد جمال أحمد زحيل (المدير العام).</text>
+              <text x="2210" y="1380" font-family="Doran, sans-serif" font-weight="bold" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">الطرف الثاني:</text>
+              <text x="1920" y="1380" font-family="Doran, sans-serif" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">${contractData.customerName}.</text>
+              <text x="1970" y="1440" font-family="Doran, sans-serif" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">يمثلها السيد علي عمار هاتف: ${contractData.phoneNumber}.</text>
+              <text x="2250" y="1630" font-family="Doran, sans-serif" font-weight="bold" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">المقدمة:</text>
+              <text x="1290" y="1630" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">نظرًا لرغبة الطرف الثاني في استئجار مساحات إعلانية من الطرف الأول، تم الاتفاق على الشروط التالية:</text>
+              <text x="2240" y="1715" font-family="Doran, sans-serif" font-weight="bold" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">البند الأول:</text>
+              <text x="1190" y="1715" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">يلتزم الطرف الثاني بتجهيز التصميم في أسرع وقت وأي تأخير يعتبر مسؤوليته، وتبدي مدة العقد من التاريخ .</text>
+              <text x="2095" y="1775" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">المذكور في المادة السادسة</text>
+              <text x="2230" y="1890" font-family="Doran, sans-serif" font-weight="bold" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">البند الثاني:</text>
+              <text x="1170" y="1890" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">يلتزم الطرف الأول بتعبئة وتركيب التصاميم بدقة على المساحات المتفق عليها وفق الجدول المرفق، ويتحمل .</text>
+              <text x="1850" y="1950" font-family="Doran, sans-serif" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">الأخير تكاليف التغيير الناتجة عن الأحوال الجوية أو الحوادث.</text>
+              <text x="2225" y="2065" font-family="Doran, sans-serif" font-weight="bold" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">البند الثالث:</text>
+              <text x="1240" y="2065" font-family="Doran, sans-serif" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">في حال وقوع ظروف قاهرة تؤثر على إحدى المساحات، يتم نقل الإعلان إلى موقع بديل، ويتولى الطرف الأول</text>
+              <text x="1890" y="2125" font-family="Doran, sans-serif" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">الحصول على الموافقات اللازمة من الجهات ذات العلاقة.</text>
+              <text x="2235" y="2240" font-family="Doran, sans-serif" font-weight="bold" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">البند الرابع:</text>
+              <text x="1190" y="2240" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">لايجوز للطرف الثاني التنازل عن العقد أو التعامل مع جهات أخرى دون موافقة الطرف الأول، الذي يحتفظ بحق.</text>
+              <text x="1530" y="2300" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">استغلال المساحات في المناسبات الوطنية و الانتخابات مع تعويض الطرف الثاني بفترة بديلة.</text>
+              <text x="560" y="2410" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="end" dominant-baseline="middle" style="direction: rtl; text-align: center">قيمة العقد ${contractData.price} دينار ليبي بدون طباعة، دفع عند توقيع العقد والنصف الآخر بعد</text>
+              <text x="1640" y="2470" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">التركيب، وإذا تأخر السداد عن 30 يومًا يحق للطرف الأول إعادة تأجير المساحات.</text>
+              <text x="2210" y="2590" font-family="Doran, sans-serif" font-weight="bold" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">البند السادس:</text>
+              <text x="1150" y="2590" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">مدة العقد ${contractData.duration} يومًا تبدأ من ${contractData.startDate} وتنتهي في ${contractData.endDate}، ويجوز تجديده برضى الطرفين قبل</text>
+              <text x="1800" y="2650" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">انتهائه بمدة لا تقل عن 15 يومًا وفق شروط يتم الاتفاق عليها .</text>
+              <text x="2220" y="2760" font-family="Doran, sans-serif" font-weight="bold" font-size="42" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">البند السابع:</text>
+              <text x="1150" y="2760" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">في حال حدوث خلاف بين الطرفين يتم حلّه وديًا، وإذا تعذر ذلك يُعين طرفان محاميان لتسوية النزاع بقرار نهائي</text>
+              <text x="2200" y="2820" font-family="Doran, sans-serif" font-size="46" fill="#000" text-anchor="middle" dominant-baseline="middle" style="direction: rtl; text-align: center">وملزم للطرفين.</text>
             </svg>
-
-            <!-- Print controls -->
-            <div class="controls">
-              <button onclick="window.print()">طباعة</button>
-              <button onclick="window.close()">إغلاق</button>
-            </div>
+            <div class="controls"><button onclick="window.print()">طباعة</button><button onclick="window.close()">إغلاق</button></div>
           </div>
+
+          ${tablePagesHtml}
         </body>
         </html>
       `;
-      
+
       // Create a new window and write the HTML content
       const printWindow = window.open('', '_blank', 'fullscreen=yes,scrollbars=no,resizable=yes');
-      
+
       if (printWindow) {
         printWindow.document.write(htmlContent);
         printWindow.document.close();
-        
-        // Wait for images to load, then focus and show print dialog
+
         printWindow.onload = () => {
           setTimeout(() => {
             printWindow.focus();
             printWindow.print();
-          }, 1000);
+          }, 800);
         };
-        
-        toast.success('تم فتح العقد للطباعة بدون فراغات بيضاء!');
+
+        toast.success('تم فتح العقد للطباعة مع جدول اللوحات!');
         onOpenChange(false);
       } else {
         throw new Error('فشل في فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة.');
       }
-      
+
     } catch (error) {
       console.error('Error opening print window:', error);
       toast.error('حدث خطأ أثناء فتح نافذة الطباعة: ' + (error as Error).message);

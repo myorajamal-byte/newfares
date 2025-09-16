@@ -113,7 +113,7 @@ export default function Contracts() {
       }
 
       await createContract(formData);
-      toast.success('تم إنشاء العقد بنجاح');
+      toast.success('تم إنشاء العقد بنجا��');
       setCreateOpen(false);
       setFormData({
         customer_name: '',
@@ -329,13 +329,134 @@ export default function Contracts() {
           <h1 className="text-3xl font-bold text-foreground">إدارة العقود</h1>
           <p className="text-muted-foreground">إنشاء وإدارة عقود الإيجار مع اللوحات الإعلانية</p>
         </div>
-        <Button
-          className="bg-gradient-primary text-white shadow-elegant hover:shadow-glow transition-smooth"
-          onClick={() => navigate('/admin/contracts/new')}
-        >
-          <Plus className="h-4 w-4 ml-2" />
-          إنشاء عقد جديد
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            className="bg-gradient-primary text-white shadow-elegant hover:shadow-glow transition-smooth"
+            onClick={() => navigate('/admin/contracts/new')}
+          >
+            <Plus className="h-4 w-4 ml-2" />
+            إنشاء عقد جديد
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                // جلب جميع اللوحات
+                const { fetchAllBillboards } = await import('@/services/supabaseService');
+                const rows: any[] = await fetchAllBillboards();
+                if (!rows || rows.length === 0) {
+                  toast.warning('لا توجد لوحات للطباعة');
+                  return;
+                }
+
+                // تطبيع الحقول
+                const norm = (b: any) => {
+                  const id = String(b.ID ?? b.id ?? '');
+                  const image = String(b.image ?? b.Image ?? b.billboard_image ?? b.Image_URL ?? b['@IMAGE'] ?? b.image_url ?? b.imageUrl ?? '');
+                  const municipality = String(b.Municipality ?? b.municipality ?? '');
+                  const district = String(b.District ?? b.district ?? '');
+                  const landmark = String(b.Nearest_Landmark ?? b.nearest_landmark ?? b.location ?? '');
+                  const size = String(b.Size ?? b.size ?? '');
+                  const faces = String(b.Faces ?? b.faces ?? b.Number_of_Faces ?? '');
+                  const priceVal = b.Price ?? b.rent ?? b.Rent_Price ?? b.price ?? b.rent_cost ?? b['Total Rent'];
+                  const priceNum = typeof priceVal === 'number' ? priceVal : Number(String(priceVal || '').replace(/[^\d.]/g, '')) || 0;
+                  const price = priceNum ? `${priceNum.toLocaleString('ar-LY')} د.ل` : '';
+                  let coords: string = String(b.GPS_Coordinates ?? b.coords ?? b.coordinates ?? b.GPS ?? '');
+                  if (!coords || coords === 'undefined' || coords === 'null') {
+                    const lat = b.Latitude ?? b.lat ?? b.latitude;
+                    const lng = b.Longitude ?? b.lng ?? b.longitude;
+                    if (lat != null && lng != null) coords = `${lat},${lng}`;
+                  }
+                  const mapLink = coords ? `https://www.google.com/maps?q=${encodeURIComponent(coords)}` : '';
+                  return { id, image, municipality, district, landmark, size, faces, price, priceNum, mapLink };
+                };
+
+                const normalized = rows.map(norm);
+                const total = normalized.reduce((s, r) => s + (r.priceNum || 0), 0);
+                const ROWS_PER_PAGE = 12;
+                const pages = normalized.reduce((acc: any[][], r, i) => {
+                  const p = Math.floor(i / ROWS_PER_PAGE); (acc[p] ||= []).push(r); return acc;
+                }, [] as any[][]);
+
+                const tablePagesHtml = pages.map((pageRows, idx) => `
+                  <div class="template-container page">
+                    <img src="/bgc2.jpg" alt="خلفية جدول اللوحات" class="template-image" />
+                    <div class="table-area">
+                      <table class="btable" dir="rtl">
+                        <colgroup>
+                          <col style="width:8%" />
+                          <col style="width:14%" />
+                          <col style="width:12%" />
+                          <col style="width:12%" />
+                          <col style="width:18%" />
+                          <col style="width:10%" />
+                          <col style="width:8%" />
+                          <col style="width:10%" />
+                          <col style="width:8%" />
+                        </colgroup>
+                        <tbody>
+                          ${pageRows.map((r:any) => `
+                            <tr>
+                              <td class="c-num">${r.id}</td>
+                              <td class="c-img">${r.image ? `<img src="${r.image}" alt="صورة اللوحة" />` : ''}</td>
+                              <td>${r.municipality}</td>
+                              <td>${r.district}</td>
+                              <td>${r.landmark}</td>
+                              <td>${r.size}</td>
+                              <td>${r.faces}</td>
+                              <td>${r.price}</td>
+                              <td>${r.mapLink ? `<a href="${r.mapLink}" target="_blank" rel="noopener">اضغط هنا</a>` : ''}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                      </table>
+                      ${idx === pages.length - 1 ? `<div class="summary">الإجمالي: ${total.toLocaleString('ar-LY')} د.ل</div>` : ''}
+                    </div>
+                  </div>
+                `).join('');
+
+                const html = `
+                  <!DOCTYPE html>
+                  <html dir="rtl" lang="ar">
+                  <head>
+                    <meta charset="UTF-8" />
+                    <title>عرض عقد - جميع اللوحات</title>
+                    <style>
+                      *{margin:0;padding:0;box-sizing:border-box}
+                      body{font-family:'Noto Sans Arabic',Arial,sans-serif;background:#fff;color:#000}
+                      .template-container{position:relative;width:210mm;height:297mm;page-break-after:always;overflow:hidden}
+                      .template-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+                      .table-area{position:absolute;right:20mm;left:20mm;top:80mm;bottom:32mm;z-index:20}
+                      .btable{width:100%;border-collapse:collapse;font-size:12pt}
+                      .btable td{border:1px solid #000;padding:4pt 3pt;vertical-align:middle}
+                      .c-img img{width:38mm;height:22mm;object-fit:cover;display:block;margin:0 auto}
+                      .c-num{text-align:center;font-weight:700}
+                      .btable a{color:#004aad;text-decoration:none}
+                      .summary{position:absolute;left:20mm;bottom:12mm;font-size:14pt;font-weight:700}
+                      @page{size:A4;margin:0}
+                      @media print{.controls{display:none}}
+                      .controls{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99}
+                      .controls button{padding:8px 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;cursor:pointer}
+                    </style>
+                  </head>
+                  <body>
+                    ${tablePagesHtml}
+                    <div class="controls"><button onclick="window.print()">طباعة</button></div>
+                  </body>
+                  </html>`;
+
+                const w = window.open('', '_blank');
+                if (!w) { toast.error('فشل فتح نافذة الطباعة'); return; }
+                w.document.write(html); w.document.close(); w.focus();
+                setTimeout(() => w.print(), 600);
+              } catch (e) {
+                console.error(e);
+                toast.error('فشل في عرض العقد');
+              }
+            }}
+          >
+            عرض عقد
+          </Button>
+        </div>
       </div>
 
       {/* إحصائيات سريعة */}
@@ -410,7 +531,7 @@ export default function Contracts() {
             <div className="relative">
               <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="ابحث في العقود..."
+                placeholder="ابحث في العق��د..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pr-10"
