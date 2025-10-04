@@ -6,11 +6,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/sonner';
-import { Edit, Trash2 } from 'lucide-react';
+import { Edit, Trash2, Printer, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Billboard } from '@/types';
 import { fetchAllBillboards } from '@/services/supabaseService';
-import { Select as UISelect, SelectContent as UISelectContent, SelectItem as UISelectItem, SelectTrigger as UISelectTrigger, SelectValue as UISelectValue } from '@/components/ui/select';
 
 interface PaymentRow {
   id: string;
@@ -35,21 +36,34 @@ interface ContractRow {
   customer_id?: string | null;
 }
 
+interface CustomerSummary {
+  id: string;
+  name: string;
+  phone: string | null;
+  company: string | null;
+  contractsCount: number;
+  totalRent: number;
+  totalPaid: number;
+  accountBalance: number; // New: separate account balance
+}
+
 export default function Customers() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const navigate = useNavigate();
   const [contracts, setContracts] = useState<ContractRow[]>([]);
   const [customers, setCustomers] = useState<{id:string; name:string; phone?: string | null; company?: string | null}[]>([]);
   const [search, setSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [selectedCustomerName, setSelectedCustomerName] = useState<string>('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  
   // print invoice dialog state
   const [printInvOpen, setPrintInvOpen] = useState(false);
   const [allBillboards, setAllBillboards] = useState<Billboard[]>([]);
   const [selectedContractsForInv, setSelectedContractsForInv] = useState<string[]>([]);
   const [sizeCounts, setSizeCounts] = useState<Record<string, number>>({});
   const [printPrices, setPrintPrices] = useState<Record<string, number>>({});
-  const [prevDebt, setPrevDebt] = useState<string>('');
+  const [includeAccountBalance, setIncludeAccountBalance] = useState(false);
 
   // add/edit customer states
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
@@ -70,7 +84,7 @@ export default function Customers() {
 
   // add invoice/receipt dialog states
   const [addOpen, setAddOpen] = useState(false);
-  const [addType, setAddType] = useState<'invoice'|'receipt'>('invoice');
+  const [addType, setAddType] = useState<'invoice'|'receipt'|'account_payment'>('receipt');
   const [addAmount, setAddAmount] = useState('');
   const [addMethod, setAddMethod] = useState('');
   const [addReference, setAddReference] = useState('');
@@ -162,18 +176,29 @@ export default function Customers() {
   }, [sizeCounts]);
 
   // Build summary per customer using customers table, payments + contracts
-  const customersSummary = useMemo(() => {
+  const customersSummary = useMemo((): CustomerSummary[] => {
     console.log('Building customer summary...');
     console.log('Customers:', customers);
     console.log('Contracts:', contracts);
     console.log('Payments:', payments);
 
-    // initialize map from customers list
-    const map = new Map<string, { id: string; name: string; contractsCount: number; totalRent: number; totalPaid: number }>();
+    // initialize map from customers list with all customer data
+    const map = new Map<string, CustomerSummary>();
     for (const c of (customers || [])) {
       const id = c.id;
       const name = c.name || '—';
-      map.set(id, { id, name, contractsCount: 0, totalRent: 0, totalPaid: 0 });
+      const phone = c.phone || null;
+      const company = c.company || null;
+      map.set(id, { 
+        id, 
+        name, 
+        phone, 
+        company, 
+        contractsCount: 0, 
+        totalRent: 0, 
+        totalPaid: 0,
+        accountBalance: 0
+      });
     }
 
     // contracts info
@@ -188,31 +213,66 @@ export default function Customers() {
         // fallback: group by name if customer_id missing
         const name = (ct['Customer Name'] || '').toString() || '—';
         const key = `name:${name}`;
-        if (!map.has(key)) map.set(key, { id: key, name, contractsCount: 0, totalRent: 0, totalPaid: 0 } as any);
+        if (!map.has(key)) {
+          map.set(key, { 
+            id: key, 
+            name, 
+            phone: null, 
+            company: null, 
+            contractsCount: 0, 
+            totalRent: 0, 
+            totalPaid: 0,
+            accountBalance: 0
+          });
+        }
         const cur = map.get(key)!;
         cur.contractsCount += 1;
         cur.totalRent += rent;
       }
     }
 
-    // payments
+    // payments - separate contract payments from account payments
     for (const p of payments) {
       const cid = (p.customer_id || null) as string | null;
       const amt = Number(p.amount || 0) || 0;
+      
       if (cid && map.has(cid)) {
         const cur = map.get(cid)!;
-        cur.totalPaid += amt;
+        if (p.entry_type === 'account_payment' || !p.contract_number) {
+          cur.accountBalance += amt;
+        } else {
+          cur.totalPaid += amt;
+        }
       } else if (p.customer_name) {
         // try to find customer by name
         const match = Array.from(map.values()).find(x => x.name && x.name.toLowerCase() === String(p.customer_name).toLowerCase());
         if (match) {
-          match.totalPaid += amt;
+          if (p.entry_type === 'account_payment' || !p.contract_number) {
+            match.accountBalance += amt;
+          } else {
+            match.totalPaid += amt;
+          }
         } else {
           const name = p.customer_name || '—';
           const key = `name:${name}`;
-          if (!map.has(key)) map.set(key, { id: key, name, contractsCount: 0, totalRent: 0, totalPaid: 0 } as any);
+          if (!map.has(key)) {
+            map.set(key, { 
+              id: key, 
+              name, 
+              phone: null, 
+              company: null, 
+              contractsCount: 0, 
+              totalRent: 0, 
+              totalPaid: 0,
+              accountBalance: 0
+            });
+          }
           const cur = map.get(key)!;
-          cur.totalPaid += amt;
+          if (p.entry_type === 'account_payment' || !p.contract_number) {
+            cur.accountBalance += amt;
+          } else {
+            cur.totalPaid += amt;
+          }
         }
       }
     }
@@ -508,7 +568,11 @@ export default function Customers() {
             </div>
             <div class="row">
               <span class="label">رقم العقد:</span>
-              <span class="value">${payment.contract_number || '—'}</span>
+              <span class="value">${payment.contract_number || (payment.entry_type === 'account_payment' ? 'حساب عام' : '—')}</span>
+            </div>
+            <div class="row">
+              <span class="label">نوع الدفعة:</span>
+              <span class="value">${payment.entry_type === 'account_payment' ? 'دفعة على الحساب' : payment.entry_type || '—'}</span>
             </div>
             <div class="row">
               <span class="label">طريقة الدفع:</span>
@@ -520,11 +584,11 @@ export default function Customers() {
             </div>
             <div class="row">
               <span class="label">التاريخ:</span>
-              <span class="value">${payment.paid_at ? new Date(payment.paid_at).toLocaleString('ar-LY') : '���'}</span>
+              <span class="value">${payment.paid_at ? new Date(payment.paid_at).toLocaleString('ar-LY') : '—'}</span>
             </div>
             ${payment.notes ? `
             <div class="row">
-              <span class="label">ملاحظا��:</span>
+              <span class="label">ملاحظات:</span>
               <span class="value">${payment.notes}</span>
             </div>
             ` : ''}
@@ -535,7 +599,7 @@ export default function Customers() {
           </div>
           
           <div class="footer">
-            <p>شكرا�� لتعاملكم معنا</p>
+            <p>شكراً لتعاملكم معنا</p>
             <p>تم إنشاء هذا الإيصال في: ${new Date().toLocaleString('ar-LY')}</p>
           </div>
           
@@ -555,6 +619,148 @@ export default function Customers() {
     }
   };
 
+  const printMultiContractInvoice = () => {
+    if (selectedContractsForInv.length === 0) {
+      toast.error('يرجى اختيار عقد واحد على الأقل');
+      return;
+    }
+
+    const selectedContractData = customerContracts.filter(c => 
+      selectedContractsForInv.includes(String(c.Contract_Number))
+    );
+
+    const contractTotal = selectedContractData.reduce((sum, contract) => 
+      sum + (Number(contract['Total Rent']) || 0), 0
+    );
+
+    // Get account balance for this customer
+    const accountBalance = customerPayments
+      .filter(p => p.entry_type === 'account_payment' || !p.contract_number)
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const printTotal = Object.entries(sizeCounts).reduce((sum, [size, qty]) => {
+      const unitPrice = printPrices[size] || 0;
+      return sum + (qty * unitPrice);
+    }, 0);
+
+    const finalTotal = contractTotal + printTotal + (includeAccountBalance ? accountBalance : 0);
+
+    const contractRows = selectedContractData.map(contract => `
+      <tr>
+        <td>${contract.Contract_Number}</td>
+        <td>${contract['Ad Type'] || '—'}</td>
+        <td>${contract['Start Date'] ? new Date(contract['Start Date']).toLocaleDateString('ar-LY') : '—'}</td>
+        <td>${contract['End Date'] ? new Date(contract['End Date']).toLocaleDateString('ar-LY') : '—'}</td>
+        <td>${(Number(contract['Total Rent']) || 0).toLocaleString('ar-LY')} د.ل</td>
+      </tr>
+    `).join('');
+
+    const printRows = Object.entries(sizeCounts).map(([size, qty]) => {
+      const unitPrice = printPrices[size] || 0;
+      const lineTotal = qty * unitPrice;
+      return `
+        <tr>
+          <td>${size}</td>
+          <td>${qty}</td>
+          <td>${unitPrice.toLocaleString('ar-LY')} د.ل</td>
+          <td>${lineTotal.toLocaleString('ar-LY')} د.ل</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8">
+      <title>فاتورة شاملة - ${selectedCustomerName}</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:20px;max-width:900px;margin:auto}
+        h1{font-size:24px;text-align:center;margin-bottom:20px}
+        .customer-info{margin-bottom:20px;background:#f9f9f9;padding:15px;border-radius:5px}
+        table{width:100%;border-collapse:collapse;margin:10px 0}
+        th,td{border:1px solid #ddd;padding:8px;text-align:center}
+        th{background:#f5f5f5;font-weight:bold}
+        .total-row{background:#e8f5e8;font-weight:bold}
+        .section-title{font-size:18px;font-weight:bold;margin:20px 0 10px 0;color:#333}
+        .footer{margin-top:30px;text-align:center;color:#666}
+      </style></head><body>
+      <h1>فاتورة شاملة</h1>
+      <div class="customer-info">
+        <strong>العميل:</strong> ${selectedCustomerName}<br>
+        <strong>التاريخ:</strong> ${new Date().toLocaleDateString('ar-LY')}<br>
+        <strong>عدد العقود:</strong> ${selectedContractsForInv.length}
+      </div>
+      
+      ${contractRows ? `
+      <div class="section-title">تفاصيل العقود:</div>
+      <table>
+        <thead>
+          <tr>
+            <th>رقم العقد</th>
+            <th>نوع الإعلان</th>
+            <th>تاريخ البداية</th>
+            <th>تاريخ النهاية</th>
+            <th>المبلغ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${contractRows}
+          <tr class="total-row">
+            <td colspan="4">إجمالي العقود</td>
+            <td>${contractTotal.toLocaleString('ar-LY')} د.ل</td>
+          </tr>
+        </tbody>
+      </table>
+      ` : ''}
+      
+      ${printRows ? `
+      <div class="section-title">تفاصيل الطباعة:</div>
+      <table>
+        <thead>
+          <tr>
+            <th>المقاس</th>
+            <th>الكمية</th>
+            <th>سعر الوحدة</th>
+            <th>الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${printRows}
+          <tr class="total-row">
+            <td colspan="3">إجمالي الطباعة</td>
+            <td>${printTotal.toLocaleString('ar-LY')} د.ل</td>
+          </tr>
+        </tbody>
+      </table>
+      ` : ''}
+      
+      <table>
+        <tbody>
+          ${includeAccountBalance ? `
+          <tr>
+            <td colspan="4">رصيد الحساب العام</td>
+            <td>${accountBalance.toLocaleString('ar-LY')} د.ل</td>
+          </tr>
+          ` : ''}
+          <tr class="total-row">
+            <td colspan="4">الإجمالي النهائي</td>
+            <td>${finalTotal.toLocaleString('ar-LY')} د.ل</td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <div class="footer">
+        <p>شكراً لتعاملكم معنا</p>
+      </div>
+      
+      <script>window.onload=function(){window.print();}</script>
+      </body></html>`;
+
+    const w = window.open('', '_blank'); 
+    if (w) { 
+      w.document.open(); 
+      w.document.write(html); 
+      w.document.close(); 
+    }
+  };
+
   const searchQ = search.trim().toLowerCase();
   const visible = customersSummary.filter(c => !searchQ || c.name.toLowerCase().includes(searchQ));
 
@@ -562,7 +768,7 @@ export default function Customers() {
     <div className="space-y-6">
       <Card className="bg-gradient-card border-0 shadow-card">
         <CardHeader>
-          <CardTitle>الزبائن ��� ملخص</CardTitle>
+          <CardTitle>الزبائن - ملخص محسن</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -636,27 +842,65 @@ export default function Customers() {
                     if (!name) return;
                     try {
                       if (editingCustomerId) {
-                        const { error } = await supabase.from('customers').update({ name, phone: phone || null, company: company || null }).eq('id', editingCustomerId);
+                        console.log('Updating customer:', editingCustomerId, { name, phone: phone || null, company: company || null });
+                        const { error, data } = await supabase
+                          .from('customers')
+                          .update({ name, phone: phone || null, company: company || null })
+                          .eq('id', editingCustomerId)
+                          .select();
+                        
+                        console.log('Update result:', { error, data });
+                        
                         if (!error) {
-                          setCustomers(prev => prev.map(c => c.id === editingCustomerId ? { ...c, name, phone: phone || null, company: company || null } : c));
+                          // Update local state with fresh data
+                          setCustomers(prev => prev.map(c => c.id === editingCustomerId ? { 
+                            ...c, 
+                            name, 
+                            phone: phone || null, 
+                            company: company || null 
+                          } : c));
+                          
+                          toast.success('تم تحديث بيانات العميل بنجاح');
                           setNewCustomerOpen(false);
                           setEditingCustomerId(null);
                           setCustomerNameInput('');
                           setCustomerPhoneInput('');
                           setCustomerCompanyInput('');
+                          
+                          // Reload data to ensure consistency
+                          await loadData();
+                        } else {
+                          console.error('Update error:', error);
+                          toast.error(`فشل في تحديث العميل: ${error.message}`);
                         }
                       } else {
-                        const { data: newC, error } = await supabase.from('customers').insert({ name, phone: phone || null, company: company || null }).select().single();
+                        const { data: newC, error } = await supabase
+                          .from('customers')
+                          .insert({ name, phone: phone || null, company: company || null })
+                          .select()
+                          .single();
+                        
                         if (!error && newC && (newC as any).id) {
-                          setCustomers(prev => [{ id: (newC as any).id, name: (newC as any).name || name, phone: (newC as any).phone || phone || null, company: (newC as any).company || company || null }, ...prev]);
+                          setCustomers(prev => [{ 
+                            id: (newC as any).id, 
+                            name: (newC as any).name || name, 
+                            phone: (newC as any).phone || phone || null, 
+                            company: (newC as any).company || company || null 
+                          }, ...prev]);
+                          
+                          toast.success('تم إضافة العميل بنجاح');
                           setNewCustomerOpen(false);
                           setCustomerNameInput('');
                           setCustomerPhoneInput('');
                           setCustomerCompanyInput('');
+                        } else {
+                          console.error('Insert error:', error);
+                          toast.error(`فشل في إضافة العميل: ${error?.message || 'خطأ غير معروف'}`);
                         }
                       }
                     } catch (e) {
-                      console.warn('customer save error', e);
+                      console.error('customer save error', e);
+                      toast.error('خطأ في حفظ بيانات العميل');
                     }
                   }}>حفظ</Button>
                 </div>
@@ -673,32 +917,43 @@ export default function Customers() {
                   <TableHead>الشركة</TableHead>
                   <TableHead>عدد العقود</TableHead>
                   <TableHead>إجمالي الإيجار</TableHead>
-                  <TableHead>المدفوع</TableHead>
+                  <TableHead>المدفوع للعقود</TableHead>
+                  <TableHead>رصيد الحساب</TableHead>
                   <TableHead>المتبقي</TableHead>
                   <TableHead>إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visible.map(c => (
-                  <TableRow key={c.id} className="hover:bg-card/50 transition-colors">
-                    <TableCell className="font-medium">{c.name}</TableCell>
-                    <TableCell>{(c as any).phone || '-'}</TableCell>
-                    <TableCell>{(c as any).company || '-'}</TableCell>
-                    <TableCell className="text-right">{c.contractsCount}</TableCell>
-                    <TableCell className="text-right font-semibold">{c.totalRent.toLocaleString('ar-LY')} د.ل</TableCell>
-                    <TableCell className="text-right text-green-600">{c.totalPaid.toLocaleString('ar-LY')} د.ل</TableCell>
-                    <TableCell className="text-right text-red-600 font-semibold">{(c.totalRent - c.totalPaid).toLocaleString('ar-LY')} د.ل</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={() => openCustomer(c.id)}>عرض فواتير الزبون</Button>
-                        <Button size="sm" variant="outline" onClick={() => { setEditingCustomerId(c.id); setCustomerNameInput(c.name); setCustomerPhoneInput((c as any).phone || ''); setCustomerCompanyInput((c as any).company || ''); setNewCustomerOpen(true); }}>تعديل</Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {visible.map(c => {
+                  const remaining = Math.max(0, c.totalRent - c.totalPaid);
+                  return (
+                    <TableRow key={c.id} className="hover:bg-card/50 transition-colors">
+                      <TableCell className="font-medium">{c.name}</TableCell>
+                      <TableCell>{c.phone || '—'}</TableCell>
+                      <TableCell>{c.company || '—'}</TableCell>
+                      <TableCell className="text-right">{c.contractsCount}</TableCell>
+                      <TableCell className="text-right font-semibold">{c.totalRent.toLocaleString('ar-LY')} د.ل</TableCell>
+                      <TableCell className="text-right text-green-600">{c.totalPaid.toLocaleString('ar-LY')} د.ل</TableCell>
+                      <TableCell className="text-right text-blue-600 font-semibold">{c.accountBalance.toLocaleString('ar-LY')} د.ل</TableCell>
+                      <TableCell className="text-right text-red-600 font-semibold">{remaining.toLocaleString('ar-LY')} د.ل</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => { const id = typeof c.id === 'string' ? c.id : String(c.id); navigate(`/admin/customer-billing?id=${encodeURIComponent(id)}&name=${encodeURIComponent(c.name)}`); }}>عرض فواتير</Button>
+                          <Button size="sm" variant="outline" onClick={() => { 
+                            setEditingCustomerId(c.id); 
+                            setCustomerNameInput(c.name); 
+                            setCustomerPhoneInput(c.phone || ''); 
+                            setCustomerCompanyInput(c.company || ''); 
+                            setNewCustomerOpen(true); 
+                          }}>تعديل</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
                 {visible.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-6">لا توجد بيانات</TableCell>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-6">لا توجد بيانات</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -732,7 +987,7 @@ export default function Customers() {
                             <TableHead>نوع الإعلان</TableHead>
                             <TableHead>تاريخ البداية</TableHead>
                             <TableHead>تاريخ النهاية</TableHead>
-                            <TableHead>القي��ة الإجمالية</TableHead>
+                            <TableHead>القيمة الإجمالية</TableHead>
                             <TableHead>المدفوع</TableHead>
                             <TableHead>المتبقي</TableHead>
                             <TableHead>الحالة</TableHead>
@@ -740,7 +995,7 @@ export default function Customers() {
                         </TableHeader>
                         <TableBody>
                           {customerContracts.map(ct => {
-                            const paidForContract = customerPayments.filter(p => (p.contract_number||'') === (ct.Contract_Number||'')).reduce((s, x) => s + (Number(x.amount)||0), 0);
+                            const paidForContract = customerPayments.filter(p => (p.contract_number||'') === (ct.Contract_Number||'') && p.entry_type !== 'account_payment').reduce((s, x) => s + (Number(x.amount)||0), 0);
                             const totalRent = Number(ct['Total Rent'] || 0) || 0;
                             const remaining = Math.max(0, totalRent - paidForContract);
                             const endDate = ct['End Date'] ? new Date(ct['End Date']) : null;
@@ -774,7 +1029,7 @@ export default function Customers() {
                     </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
-                      <p>لا ت��جد عقود مسجلة لهذا العميل</p>
+                      <p>لا توجد عقود مسجلة لهذا العميل</p>
                     </div>
                   )}
                 </CardContent>
@@ -787,8 +1042,12 @@ export default function Customers() {
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => { setAddDebtOpen(true); setDebtAmount(''); setDebtNotes(''); setDebtDate(new Date().toISOString().slice(0,10)); }}>إضافة دين سابق</Button>
                       <Button size="sm" onClick={() => { setPrintInvOpen(true); setSelectedContractsForInv(customerContracts[0]?.Contract_Number ? [String(customerContracts[0]?.Contract_Number)] : []); }}>إضافة فاتورة طباعة</Button>
-                      <Button size="sm" onClick={() => { setAddType('invoice'); setAddOpen(true); setAddAmount(''); setAddMethod(''); setAddReference(''); setAddNotes(''); setAddDate(new Date().toISOString().slice(0,10)); setAddContract(customerContracts[0]?.Contract_Number ? String(customerContracts[0]?.Contract_Number) : ''); }}>إضافة فاتورة (سجل)</Button>
+                      <Button size="sm" onClick={() => { setAddType('invoice'); setAddOpen(true); setAddAmount(''); setAddMethod(''); setAddReference(''); setAddNotes(''); setAddDate(new Date().toISOString().slice(0,10)); setAddContract(customerContracts[0]?.Contract_Number ? String(customerContracts[0]?.Contract_Number) : ''); }}>إضافة فاتورة</Button>
                       <Button size="sm" variant="outline" onClick={() => { setAddType('receipt'); setAddOpen(true); setAddAmount(''); setAddMethod(''); setAddReference(''); setAddNotes(''); setAddDate(new Date().toISOString().slice(0,10)); setAddContract(customerContracts[0]?.Contract_Number ? String(customerContracts[0]?.Contract_Number) : ''); }}>إضافة إيصال</Button>
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => { setAddType('account_payment'); setAddOpen(true); setAddAmount(''); setAddMethod(''); setAddReference(''); setAddNotes(''); setAddDate(new Date().toISOString().slice(0,10)); setAddContract(''); }}>
+                        <Plus className="h-4 w-4 ml-1" />
+                        دفعة على الحساب
+                      </Button>
                     </div>
                   </CardTitle>
                 </CardHeader>
@@ -799,6 +1058,7 @@ export default function Customers() {
                         <TableHeader>
                           <TableRow>
                             <TableHead>رقم العقد</TableHead>
+                            <TableHead>النوع</TableHead>
                             <TableHead>المبلغ</TableHead>
                             <TableHead>طريقة الدفع</TableHead>
                             <TableHead>المرجع</TableHead>
@@ -810,7 +1070,22 @@ export default function Customers() {
                         <TableBody>
                           {customerPayments.map(p => (
                             <TableRow key={p.id}>
-                              <TableCell className="font-medium">{p.contract_number || '—'}</TableCell>
+                              <TableCell className="font-medium">
+                                {p.contract_number || (p.entry_type === 'account_payment' ? 'حساب عام' : '—')}
+                              </TableCell>
+                              <TableCell>
+                                <span className={`px-2 py-1 rounded text-xs ${
+                                  p.entry_type === 'account_payment' ? 'bg-green-100 text-green-800' :
+                                  p.entry_type === 'receipt' ? 'bg-blue-100 text-blue-800' :
+                                  p.entry_type === 'debt' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {p.entry_type === 'account_payment' ? 'دفعة حساب' :
+                                   p.entry_type === 'receipt' ? 'إيصال' :
+                                   p.entry_type === 'debt' ? 'دين سابق' :
+                                   p.entry_type || '—'}
+                                </span>
+                              </TableCell>
                               <TableCell className="font-semibold text-green-600">{(Number(p.amount)||0).toLocaleString('ar-LY')} د.ل</TableCell>
                               <TableCell>{p.method || '—'}</TableCell>
                               <TableCell>{p.reference || '—'}</TableCell>
@@ -854,25 +1129,42 @@ export default function Customers() {
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{addType === 'invoice' ? 'إضافة فاتورة' : 'إض��فة إيصال'}</DialogTitle>
+            <DialogTitle>
+              {addType === 'invoice' ? 'إضافة فاتورة' : 
+               addType === 'account_payment' ? 'إضافة دفعة على الحساب' : 
+               'إضافة إيصال'}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
             <div className="text-sm text-muted-foreground">العميل: {selectedCustomerName}</div>
+            
+            {addType === 'account_payment' && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded">
+                <p className="text-sm text-green-800">
+                  هذه الدفعة ستُضاف إلى رصيد الحساب العام للعميل ولن تُربط بعقد محدد
+                </p>
+              </div>
+            )}
+
+            {addType !== 'account_payment' && (
+              <div>
+                <label className="text-sm font-medium">العقد</label>
+                <Select value={addContract} onValueChange={setAddContract}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر عقدًا أو اتركه فارغاً للحساب العام" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    <SelectItem value="">حساب عام (بدون عقد محدد)</SelectItem>
+                    {customerContracts.map((ct)=> (
+                      <SelectItem key={String(ct.Contract_Number)} value={String(ct.Contract_Number)}>{String(ct.Contract_Number)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div>
-              <label className="text-sm font-medium">العقد</label>
-              <Select value={addContract} onValueChange={setAddContract}>
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر عقدًا" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {customerContracts.map((ct)=> (
-                    <SelectItem key={String(ct.Contract_Number)} value={String(ct.Contract_Number)}>{String(ct.Contract_Number)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium">الم��لغ</label>
+              <label className="text-sm font-medium">المبلغ</label>
               <Input type="number" value={addAmount} onChange={(e)=>setAddAmount(e.target.value)} />
             </div>
             <div>
@@ -903,21 +1195,25 @@ export default function Customers() {
               <Button variant="outline" onClick={() => setAddOpen(false)}>إلغاء</Button>
               <Button onClick={async () => {
                 try {
-                  if (!addAmount || !addContract) { toast.error('أكمل البيانات'); return; }
+                  if (!addAmount) { toast.error('أدخل المبلغ'); return; }
+                  const amt = Number(addAmount);
+                  if (!amt || amt <= 0) { toast.error('المبلغ يجب أن يكون أكبر من صفر'); return; }
+                  
                   const payload = {
                     customer_id: customers.find(c => c.name === selectedCustomerName)?.id || (typeof selectedCustomer === 'string' && !selectedCustomer.startsWith('name:') ? selectedCustomer : null),
                     customer_name: selectedCustomerName,
-                    contract_number: addContract || null,
-                    amount: Number(addAmount) || 0,
+                    contract_number: addType === 'account_payment' ? null : (addContract || null),
+                    amount: amt,
                     method: addMethod || null,
                     reference: addReference || null,
                     notes: addNotes || null,
                     paid_at: addDate ? new Date(addDate).toISOString() : new Date().toISOString(),
-                    entry_type: addType,
+                    entry_type: addType === 'account_payment' ? 'account_payment' : addType,
                   } as any;
+                  
                   const { error } = await supabase.from('customer_payments').insert(payload);
                   if (error) { console.error(error); toast.error('فشل الحفظ'); return; }
-                  toast.success('تمت الإضافة');
+                  toast.success('تمت الإضافة بنجاح');
                   setAddOpen(false);
                   if (selectedCustomer) await openCustomer(selectedCustomer);
                   await loadData();
@@ -992,28 +1288,39 @@ export default function Customers() {
           </div>
         </DialogContent>
       </Dialog>
-      {/* Print Invoice Dialog (client-side only) */}
+
+      {/* Print Invoice Dialog (Enhanced) */}
       <Dialog open={printInvOpen} onOpenChange={setPrintInvOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>إضافة فاتورة طباعة</DialogTitle>
+            <DialogTitle>فاتورة شاملة محسنة</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">العميل: {selectedCustomerName}</div>
+            
             <div>
-              <label className="text-sm font-medium">اختر العقود (يمكن اختيار أكثر من عقد)</label>
-              <div className="flex flex-wrap gap-2 mt-2">
+              <label className="text-sm font-medium mb-2 block">اختر العقود (يمكن اختيار أكثر من عقد):</label>
+              <div className="space-y-2 max-h-40 overflow-y-auto border rounded p-3">
                 {customerContracts.map((ct)=>{
                   const num = String(ct.Contract_Number||'');
-                  const selected = selectedContractsForInv.includes(num);
+                  const isSelected = selectedContractsForInv.includes(num);
                   return (
-                    <button
-                      key={num}
-                      className={`px-3 py-1 rounded border ${selected ? 'bg-primary text-primary-foreground' : ''}`}
-                      onClick={() => setSelectedContractsForInv((prev)=> selected ? prev.filter(n=>n!==num) : [...prev, num])}
-                    >
-                      {num || '—'}
-                    </button>
+                    <div key={num} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`contract-${num}`}
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedContractsForInv(prev => [...prev, num]);
+                          } else {
+                            setSelectedContractsForInv(prev => prev.filter(c => c !== num));
+                          }
+                        }}
+                      />
+                      <label htmlFor={`contract-${num}`} className="text-sm cursor-pointer">
+                        عقد رقم {num} - {ct['Ad Type'] || '—'} - {(Number(ct['Total Rent']) || 0).toLocaleString('ar-LY')} د.ل
+                      </label>
+                    </div>
                   );
                 })}
               </div>
@@ -1035,7 +1342,7 @@ export default function Customers() {
                   <tbody>
                     {Object.keys(sizeCounts).length === 0 && (
                       <tr>
-                        <td colSpan={3} className="text-center text-sm text-muted-foreground py-2">لا توجد لوحات للعقود المحددة</td>
+                        <td colSpan={5} className="text-center text-sm text-muted-foreground py-2">لا توجد لوحات للعقود المحددة</td>
                       </tr>
                     )}
                     {Object.entries(sizeCounts).map(([size, qty]) => {
@@ -1062,35 +1369,23 @@ export default function Customers() {
               </div>
             </div>
 
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="include-account-balance"
+                checked={includeAccountBalance}
+                onCheckedChange={setIncludeAccountBalance}
+              />
+              <label htmlFor="include-account-balance" className="text-sm cursor-pointer">
+                إضافة رصيد الحساب العام للعميل
+              </label>
+            </div>
+
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={()=> setPrintInvOpen(false)}>إغلاق</Button>
-              <Button onClick={()=>{
-                const entries = Object.entries(sizeCounts).filter(([_,q])=> (Number(q)||0)>0);
-                const rows = entries.map(([s,q])=> {
-                  const unit = Number(printPrices[s] || 0);
-                  const line = (Number(q)||0) * unit;
-                  return { size: s, qty: Number(q)||0, unit, line };
-                });
-                const totalQty = rows.reduce((s, r)=> s + r.qty, 0);
-                const grand = rows.reduce((s, r)=> s + r.line, 0);
-                const html = `
-                <html dir="rtl"><head><meta charset="utf-8"><title>فاتورة طباعة</title>
-                <style>body{font-family:Arial,sans-serif;padding:20px;max-width:800px;margin:auto} h1{font-size:22px} table{width:100%;border-collapse:collapse;margin-top:10px} th,td{border:1px solid #ddd;padding:8px;text-align:center} .right{text-align:right}</style>
-                </head><body>
-                  <h1>فاتورة طباعة</h1>
-                  <div class="right">العميل: ${selectedCustomerName}</div>
-                  <div class="right">العقود: ${selectedContractsForInv.join(', ')||'—'}</div>
-                  <table><thead><tr><th>المقاس</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>
-                    ${rows.map(r=> `<tr><td>${r.size}</td><td>${r.qty}</td><td>${r.unit.toLocaleString('ar-LY')} د.ل</td><td>${r.line.toLocaleString('ar-LY')} د.ل</td></tr>`).join('')}
-                  </tbody></table>
-                  ${prevDebt ? `<p class="right">دين سابق: ${Number(prevDebt).toLocaleString('ar-LY')} د.ل</p>` : ''}
-                  <p class="right">إجمالي عدد اللوحات: ${totalQty}</p>
-                  <p class="right">الإجمالي النهائي: ${grand.toLocaleString('ar-LY')} د.ل</p>
-                  <script>window.onload=function(){window.print();}</script>
-                </body></html>`;
-                const w = window.open('', '_blank');
-                if (w) { w.document.open(); w.document.write(html); w.document.close(); }
-              }}>طباعة</Button>
+              <Button variant="outline" onClick={() => setPrintInvOpen(false)}>إغلاق</Button>
+              <Button onClick={printMultiContractInvoice} className="bg-blue-600 hover:bg-blue-700">
+                <Printer className="h-4 w-4 ml-2" />
+                طباعة الفاتورة الشاملة
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -1120,17 +1415,21 @@ export default function Customers() {
               <Button onClick={async ()=>{
                 try {
                   if (!debtAmount) { toast.error('أدخل المبلغ'); return; }
+                  const amt = Number(debtAmount);
+                  if (!amt || amt <= 0) { toast.error('المبلغ يجب أن يكون أكبر من صفر'); return; }
+                  
                   const payload = {
                     customer_id: customers.find(c => c.name === selectedCustomerName)?.id || (typeof selectedCustomer === 'string' && !selectedCustomer.startsWith('name:') ? selectedCustomer : null),
                     customer_name: selectedCustomerName,
                     contract_number: null,
-                    amount: Number(debtAmount) || 0,
+                    amount: amt,
                     method: 'دين سابق',
                     reference: null,
                     notes: debtNotes || null,
                     paid_at: debtDate ? new Date(debtDate).toISOString() : new Date().toISOString(),
                     entry_type: 'debt',
                   } as any;
+                  
                   const { error } = await supabase.from('customer_payments').insert(payload);
                   if (error) { console.error(error); toast.error('فشل الحفظ'); return; }
                   toast.success('تمت إضافة الدين');

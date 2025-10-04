@@ -1,4 +1,4 @@
-import { Home, Settings, Users, Calendar, DollarSign, BarChart3, MapPin, FileText, LogOut } from 'lucide-react';
+import { Home, Settings, Users, Calendar, DollarSign, BarChart3, MapPin, FileText, LogOut, Merge, Trash2, TrendingUp, TrendingDown, CreditCard, Receipt, Calculator, Truck, Printer, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,18 +6,34 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 const sidebarItems = [
   { id: 'dashboard', label: 'الرئيسية', icon: Home, path: '/admin' },
+  
+  // إدارة اللوحات
   { id: 'billboards', label: 'إدارة اللوحات', icon: MapPin, path: '/admin/billboards' },
-  { id: 'booking_requests', label: 'طلبات الحجز', icon: FileText, path: '/admin/booking-requests' },
+  { id: 'billboard_cleanup', label: 'تنظيف اللوحات المنتهية', icon: Trash2, path: '/admin/billboard-cleanup' },
+  { id: 'billboard_maintenance', label: 'صيانة اللوحات', icon: Wrench, path: '/admin/billboard-maintenance' },
   { id: 'shared_billboards', label: 'اللوحات المشتركة', icon: FileText, path: '/admin/shared-billboards' },
   { id: 'shared_companies', label: 'الشركات المشاركة', icon: FileText, path: '/admin/shared-companies' },
+  
+  // إدارة العملاء
   { id: 'customers', label: 'الزبائن', icon: Users, path: '/admin/customers' },
-  { id: 'users', label: 'المستخدمين', icon: Users, path: '/admin/users' },
-  { id: 'pricing', label: 'أسعار الإيجار', icon: DollarSign, path: '/admin/pricing' },
-  { id: 'installation', label: 'أسعار ��لتركيب والطباعة', icon: DollarSign, path: '/admin/installation-pricing' },
-  { id: 'expenses', label: 'المصروفات', icon: DollarSign, path: '/admin/expenses' },
-  { id: 'payments', label: 'الدفعات والإيصالات', icon: DollarSign, path: '/admin/payments' },
-  { id: 'reports', label: 'التقارير والإحصائيات', icon: BarChart3, path: '/admin/reports' },
+  { id: 'customer_merge', label: 'دمج العملاء المكررين', icon: Merge, path: '/admin/customer-merge' },
+  
+  // الإدارة المالية
+  { id: 'revenue_management', label: 'إدارة الإيرادات', icon: TrendingUp, path: '/admin/revenue-management' },
+  { id: 'expense_management', label: 'إدارة المصروفات', icon: TrendingDown, path: '/admin/expense-management' },
+  { id: 'payments', label: 'الدفعات والإيصالات', icon: CreditCard, path: '/admin/payments' },
+  { id: 'expenses', label: 'المصروفات القديمة', icon: DollarSign, path: '/admin/expenses' },
+  
+  // التسعير والفواتير
+  { id: 'pricing', label: 'أسعار الإيجار', icon: Calculator, path: '/admin/pricing' },
+  { id: 'installation', label: 'أسعار التركيب والطباعة', icon: Truck, path: '/admin/installation-pricing' },
+  { id: 'print_invoice', label: 'طباعة فاتورة التركيب', icon: Printer, path: '/admin/print-installation-invoice' },
+  
+  // أخرى
+  { id: 'booking_requests', label: 'طلبات الحجز', icon: Calendar, path: '/admin/booking-requests' },
   { id: 'contracts', label: 'العقود', icon: FileText, path: '/admin/contracts' },
+  { id: 'users', label: 'المستخدمين', icon: Users, path: '/admin/users' },
+  { id: 'reports', label: 'التقارير والإحصائيات', icon: BarChart3, path: '/admin/reports' },
   { id: 'settings', label: 'الإعدادات', icon: Settings, path: '/admin/settings' },
 ];
 
@@ -51,7 +67,7 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* القائمة */}
-      <nav className="flex-1 p-4 space-y-2">
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {sidebarItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);

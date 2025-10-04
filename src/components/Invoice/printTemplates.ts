@@ -33,7 +33,7 @@ export type OfferMeta = {
 export function buildAlFaresOfferHtml(items: Billboard[], meta: OfferMeta) {
   const months = meta.months;
   const customer = meta.customer || CUSTOMERS[0];
-  const companyName = meta.companyName || 'شركة الفارس الذهبي للدعاية والإعلان';
+  const companyName = meta.companyName || 'شركة الفا��س الذهبي للدعاية والإعلان';
   const companyAddress = meta.companyAddress || 'طرابلس – طريق المطار، حي الزهور';
   const companyRep = meta.companyRep || 'جمال امحمد زحيلق (المدير العام)';
   const iban = meta.iban || 'LY15014051021405100053401';
@@ -111,7 +111,7 @@ export function buildAlFaresOfferHtml(items: Billboard[], meta: OfferMeta) {
     <div class="box">
       <p>نظراً لرغبة الطرف الثاني في استئجار مساحات إعلانية من الطرف الأول، تم الاتفاق على الشروط التالية.</p>
       <p>قيمة العقد ${formatCurrency(grand)} بدون طباعة؛ تُدفع نصف القيمة عند توقيع العقد والنصف الآخر بعد التركي��، وإذا تأخر السداد عن 30 يوماً يحق للطرف الأول إعادة تأجير المساحات.</p>
-      <p>مدة العقد ${period} تبدأ من ${fmt(new Date(), 'yyyy/MM/dd')} وتنتهي في ${endDateText} ويجوز تجديده برضى الطرفين.</p>
+      <p>مدة العقد ${period} تبد�� من ${fmt(new Date(), 'yyyy/MM/dd')} وتنتهي في ${endDateText} ويجوز تجديده برضى الط��فين.</p>
     </div>
 
     <table>
@@ -240,5 +240,86 @@ export function buildMinimalOfferHtml(items: Billboard[], meta: OfferMeta & { lo
       </table>
     </div>
     <script>window.onload=()=>{try{window.print();}catch(e){setTimeout(()=>window.print(),300);}}</script>
+  </body></html>`;
+}
+
+export function buildBgc2OfferHtml(items: any[], meta: OfferMeta) {
+  const months = meta.months || 1;
+  const customer = meta.customer || CUSTOMERS[0];
+  const durationText = months === 12 ? 'سنة' : `${months} شهر`;
+
+  const startX = 105; // mm (center)
+  const startY = 63.53; // mm
+  const rowW = 184.247; // mm
+  const rowH = 13.818; // mm
+  const pageH = 297; // A4 mm
+  const usableH = pageH - startY; // from startY to bottom
+  const rowsPerPage = Math.max(1, Math.floor(usableH / rowH));
+
+  const buildRow = (b: any) => {
+    const size = b.Size || b.size || '';
+    const level = b.Level || b.level;
+    const unit = getPriceFor(size, level, customer as any, months) ?? 0;
+    const muni = b.Municipality || b.municipality || '';
+    const district = b.District || b.district || '';
+    const landmark = b.Nearest_Landmark || b.location || '';
+    const faces = b.Faces_Count || '1';
+    const code = b.Billboard_Name || b.name || b.id || '';
+    const url = (() => {
+      const coords = b.GPS_Coordinates || b.coordinates || '';
+      if (typeof coords === 'string' && coords.includes(',')) {
+        const [lat, lng] = coords.split(',').map((c: string) => c.trim());
+        if (lat && lng) return `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`;
+      }
+      return b.GPS_Link || 'https://www.google.com/maps';
+    })();
+    const img = (b.Image_URL || b.image) ? `<img src="${b.Image_URL || b.image}" style="width:11mm;height:11mm;object-fit:cover;border-radius:1mm"/>` : '';
+
+    return `<div class="row">
+      <div class="c code">${code}</div>
+      <div class="c img">${img}</div>
+      <div class="c muni">${muni}</div>
+      <div class="c district">${district}</div>
+      <div class="c landmark">${landmark}</div>
+      <div class="c size">${size}</div>
+      <div class="c faces">${faces}</div>
+      <div class="c price">${(unit || 0).toLocaleString('ar-LY')} د.ل</div>
+      <div class="c duration">${durationText}</div>
+      <div class="c link"><a href="${url}">اضغط هنا</a></div>
+    </div>`;
+  };
+
+  const pages: string[] = [];
+  for (let i = 0; i < items.length; i += rowsPerPage) {
+    const slice = items.slice(i, i + rowsPerPage);
+    const rowsHtml = slice.map(buildRow).join('');
+    const page = `
+      <div class="page">
+        <img class="bg" src="/bgc2.jpg" alt="" />
+        <div class="tableArea">
+          ${rowsHtml}
+        </div>
+      </div>`;
+    pages.push(page);
+  }
+
+  return `<!doctype html><html dir=\"rtl\" lang=\"ar\"><head><meta charset=\"utf-8\"/>
+  <title>عرض سعر</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; }
+    body { background: #fff; font-family: 'Cairo','Tajawal', system-ui, sans-serif; font-size: 8px; }
+    .page { position: relative; width: 210mm; height: 297mm; page-break-after: always; background: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .tableArea { position: absolute; top: ${startY}mm; left: calc(${startX}mm - ${rowW/2}mm); width: ${rowW}mm; z-index: 1; }
+    .row { display: grid; grid-template-columns: 10% 10% 10% 10% 20% 8% 8% 10% 7% 7%; align-items: center; width: ${rowW}mm; height: ${rowH}mm; box-sizing: border-box; padding: 0 1mm; background: transparent; margin: 0; }
+            .c { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; color: #111; padding-inline: 1mm; }
+    .price, .duration, .faces, .size { text-align: center; }
+    a { color: #0a58ca; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .bg { position:absolute; top:0; left:0; width:210mm; height:297mm; object-fit:cover; z-index:0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @media print { .page { box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style></head><body>
+    ${pages.join('')}
+    <script>window.onload=()=>{try{window.print()}catch(e){setTimeout(()=>window.print(),300)}};</script>
   </body></html>`;
 }

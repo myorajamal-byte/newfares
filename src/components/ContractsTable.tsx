@@ -28,7 +28,7 @@ export const ContractsTable = () => {
     } catch (error) {
       toast({
         title: "خطأ في تحميل العقود",
-        description: "تعذر تحم��ل بيانات العقود",
+        description: "تعذر تحم  ل بيانات العقود",
         variant: "destructive"
       });
     } finally {
