@@ -75,7 +75,7 @@ interface ModernPrintInvoiceDialogProps {
 }
 
 const CURRENCIES = [
-  { code: 'LYD', name: 'دينار ليبي', symbol: 'د.ل', writtenName: 'دينار ليبي' },
+  { code: 'LYD', name: 'دينار ��يبي', symbol: 'د.ل', writtenName: 'دينار ليبي' },
   { code: 'USD', name: 'دولار أمريكي', symbol: '$', writtenName: 'دولار أمريكي' },
   { code: 'EUR', name: 'يورو', symbol: '€', writtenName: 'يورو' },
 ];
@@ -116,7 +116,7 @@ interface InvoiceSubmissionPayload {
   currencySymbol: string;
 }
 
-// ✅ دالة تنسيق الأرقام العربية
+// ✅ دالة تنسيق الأرق��م العربية
 const formatArabicNumber = (num: number): string => {
   if (isNaN(num) || num === null || num === undefined) return '0';
   
@@ -168,29 +168,64 @@ export default function ModernPrintInvoiceDialog({
   // ✅ جلب بيانات الأحجام من قاعدة البي��نات مع الأبعاد
   const fetchSizeData = async () => {
     try {
-      const { data: sizesData, error } = await supabase
+      const orderMap: { [key: string]: number } = {};
+      const dimensionsMap: { [key: string]: { width: number; height: number } } = {};
+      const pricingMap: { [key: string]: { printPrice: number; installationPrice: number } } = {};
+
+      const primaryResponse = await supabase
         .from('sizes')
-        .select('name, sort_order, width, height')
+        .select('name, sort_order, width, height, print_price, installation_price')
         .order('sort_order', { ascending: true });
 
-      if (!error && sizesData) {
-        const orderMap: { [key: string]: number } = {};
-        const dimensionsMap: { [key: string]: { width: number; height: number } } = {};
-        
-        sizesData.forEach(size => {
-          orderMap[size.name] = size.sort_order || 999;
-          dimensionsMap[size.name] = {
-            width: Number(size.width) || 0,
-            height: Number(size.height) || 0
+      let sizesData = primaryResponse.data || [];
+
+      if (primaryResponse.error || !sizesData.length) {
+        const fallbackResponse = await supabase
+          .from('Size')
+          .select('name, sort_order, width, height, print_price, installation_price');
+
+        if (!fallbackResponse.error && fallbackResponse.data) {
+          sizesData = fallbackResponse.data;
+        } else if (primaryResponse.error) {
+          console.warn('Failed to load size data:', primaryResponse.error);
+        }
+      }
+
+      sizesData.forEach((size: any) => {
+        const sizeName = size.name;
+        orderMap[sizeName] = size.sort_order || 999;
+        dimensionsMap[sizeName] = {
+          width: Number(size.width) || 0,
+          height: Number(size.height) || 0
+        };
+        pricingMap[sizeName] = {
+          printPrice: Number(size.print_price) || 0,
+          installationPrice: Number(size.installation_price) || 0
+        };
+      });
+
+      const { data: pricingData, error: pricingError } = await supabase
+        .from('installation_print_pricing')
+        .select('size, print_price, installation_price');
+
+      if (!pricingError && pricingData) {
+        pricingData.forEach((record: any) => {
+          const sizeName = record.size;
+          if (!sizeName) return;
+          const current = pricingMap[sizeName] || { printPrice: 0, installationPrice: 0 };
+          pricingMap[sizeName] = {
+            printPrice: record.print_price !== null ? Number(record.print_price) : current.printPrice,
+            installationPrice: record.installation_price !== null ? Number(record.installation_price) : current.installationPrice
           };
         });
-        
-        setSizeOrderMap(orderMap);
-        setSizeDimensionsMap(dimensionsMap);
-        console.log('Size data loaded:', { orderMap, dimensionsMap });
-      } else {
-        console.warn('Failed to load size data:', error);
+      } else if (pricingError) {
+        console.warn('Failed to load pricing data:', pricingError.message);
       }
+
+      setSizeOrderMap(orderMap);
+      setSizeDimensionsMap(dimensionsMap);
+      setSizePricingMap(pricingMap);
+      console.log('Size data loaded:', { orderMap, dimensionsMap, pricingMap });
     } catch (error) {
       console.error('Error fetching size data:', error);
     }
@@ -440,7 +475,7 @@ export default function ModernPrintInvoiceDialog({
     setLocalPrintItems(updatedItems);
   };
 
-  // ✅ دالة طباعة أمر الطباعة (بدون أسعار مع حقول A/B)
+  // ✅ دالة طباعة أمر الطباعة (بدون أ��عار مع حقول A/B)
   const handlePrintWorkOrder = () => {
     if (localPrintItems.length === 0) {
       toast.error('لا توجد عناصر للطباعة');
@@ -1184,7 +1219,7 @@ export default function ModernPrintInvoiceDialog({
               
               <div class="footer">
                 شكراً لتعاملكم معنا | Thank you for your business<br>
-                هذه فاتورة إلكترونية ولا تحتاج إلى ختم أو توقيع
+                هذ�� فاتورة إلكترونية ولا تحتاج إلى ختم أو توقيع
               </div>
             </div>
             
