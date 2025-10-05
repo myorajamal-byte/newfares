@@ -376,6 +376,12 @@ export default function ModernPrintInvoiceDialog({
   };
 
   useEffect(() => {
+    if (onInvoiceTypeChange) {
+      onInvoiceTypeChange(invoiceType);
+    }
+  }, [invoiceType, onInvoiceTypeChange]);
+
+  useEffect(() => {
     if (open && Object.keys(sizeDimensionsMap).length > 0) {
       getBillboardsFromContracts(selectedContracts);
     }
@@ -397,7 +403,7 @@ export default function ModernPrintInvoiceDialog({
     handleContractToggle(contractNumber);
   };
 
-  // ✅ دالة تحديث ��لعناصر مع الحساب الصحيح
+  // ✅ دالة تحديث العناصر مع الحساب الصحيح
   const handlePrintItemUpdate = (index: number, field: keyof PrintItem, value: number) => {
     const updatedItems = [...localPrintItems];
     const item = { ...updatedItems[index] };
@@ -707,7 +713,7 @@ export default function ModernPrintInvoiceDialog({
               <div class="work-order-info">
                 <div class="work-order-title">أمر طباعة</div>
                 <div class="work-order-details">
-                  رقم الأ��ر: ${invoiceNumber}<br>
+                  رقم الأمر: ${invoiceNumber}<br>
                   التاريخ: ${formattedDate}
                 </div>
               </div>
@@ -804,7 +810,7 @@ export default function ModernPrintInvoiceDialog({
 
   const handlePrint = () => {
     if (localPrintItems.length === 0) {
-      toast.error('لا توجد عناصر للطباعة');
+      toast.error('لا تو��د عناصر للطباعة');
       return;
     }
 
@@ -1106,7 +1112,7 @@ export default function ModernPrintInvoiceDialog({
                 <div class="customer-details">
                   <strong>الاسم:</strong> ${customerName}<br>
                   <strong>العقود المرتبطة:</strong> ${selectedContracts.join(', ')}<br>
-                  <strong>تاريخ الفا��ورة:</strong> ${formattedDate}
+                  <strong>تاريخ الفاتورة:</strong> ${formattedDate}
                 </div>
               </div>
               
