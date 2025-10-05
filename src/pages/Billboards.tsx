@@ -1,29 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import MultiSelect from '@/components/ui/multi-select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { MapPin, Edit, Link, Unlink, Wrench, ExternalLink } from 'lucide-react';
+import { BillboardGridCard } from '@/components/BillboardGridCard';
+import { BillboardFilters } from '@/components/BillboardFilters';
+import { BillboardActions } from '@/components/BillboardActions';
+import { BillboardAddDialog } from '@/components/billboards/BillboardAddDialog';
+import { BillboardEditDialog } from '@/components/billboards/BillboardEditDialog';
+import { ContractManagementDialog } from '@/components/billboards/ContractManagementDialog';
+import { PrintFiltersDialog } from '@/components/billboards/PrintFiltersDialog';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { searchBillboards } from '@/services/billboardService';
+import { useBillboardData } from '@/hooks/useBillboardData';
+import { useBillboardForm } from '@/hooks/useBillboardForm';
+import { useBillboardActions } from '@/hooks/useBillboardActions';
+import { useBillboardExport } from '@/hooks/useBillboardExport';
+import { useBillboardContract } from '@/hooks/useBillboardContract';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { MapPin, Filter, Plus, Search, Edit, Download, Printer } from 'lucide-react';
-import { BillboardGridCard } from '@/components/BillboardGridCard';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandEmpty } from '@/components/ui/command';
-import { Billboard } from '@/types';
-import { searchBillboards } from '@/services/billboardService';
-import { fetchAllBillboards } from '@/services/supabaseService';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import * as XLSX from 'xlsx';
 
 export default function Billboards() {
   const navigate = useNavigate();
-  const [billboards, setBillboards] = useState<Billboard[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 16;
+
+  // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedCities, setSelectedCities] = useState<string[]>([]);
@@ -32,644 +38,557 @@ export default function Billboards() {
   const [adTypeFilter, setAdTypeFilter] = useState<string>('all');
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
   const [selectedContractNumbers, setSelectedContractNumbers] = useState<string[]>([]);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editing, setEditing] = useState<Billboard | null>(null);
-  const [editForm, setEditForm] = useState<any>({});
-  const [saving, setSaving] = useState(false);
 
-  // Add billboard dialog
-  const [addOpen, setAddOpen] = useState(false);
-  const [addForm, setAddForm] = useState<any>({});
-  const [adding, setAdding] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 10;
+  // Print filters
+  const [printFiltersOpen, setPrintFiltersOpen] = useState(false);
+  const [printFilters, setPrintFilters] = useState({
+    municipality: 'all',
+    city: 'all',
+    size: 'all',
+    status: 'all',
+    adType: 'all'
+  });
 
-  // Image upload states
-  const [imagePreview, setImagePreview] = useState<string>('');
+  // Maintenance dialog state
+  const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false);
+  const [selectedBillboard, setSelectedBillboard] = useState<any>(null);
+  const [maintenanceForm, setMaintenanceForm] = useState({
+    status: '',
+    type: '',
+    description: '',
+    priority: 'normal'
+  });
 
-  // Data for dropdowns
-  const [municipalities, setMunicipalities] = useState<any[]>([]);
-  const [sizes, setSizes] = useState<string[]>([]);
-  const [levels, setLevels] = useState<string[]>([]);
-  const [citiesList, setCitiesList] = useState<string[]>([]);
+  // Custom hooks
+  const billboardData = useBillboardData();
+  const billboardForm = useBillboardForm(billboardData.municipalities);
+  const billboardActions = useBillboardActions();
+  const billboardExport = useBillboardExport();
+  const billboardContract = useBillboardContract();
 
-  // Export to Excel function
-  const exportToExcel = async () => {
-    try {
-      toast.info('جاري تحضير ملف Excel...');
-      
-      // Prepare data for export
-      const exportData = billboards.map((billboard: any) => ({
-        'رقم اللوحة': billboard.ID || billboard.id || '',
-        'اسم اللوحة': billboard.Billboard_Name || billboard.name || '',
-        'المدينة': billboard.City || billboard.city || '',
-        'البلدية': billboard.Municipality || billboard.municipality || '',
-        'المنطقة': billboard.District || billboard.district || '',
-        'أقرب معلم': billboard.Nearest_Landmark || billboard.location || '',
-        'المقاس': billboard.Size || billboard.size || '',
-        'المستوى': billboard.Level || billboard.level || '',
-        'الحالة': billboard.Status || billboard.status || '',
-        'رقم العقد': billboard.Contract_Number || billboard.contractNumber || '',
-        'اسم العميل': billboard.Customer_Name || billboard.clientName || '',
-        'نوع الإعلان': billboard.Ad_Type || billboard.adType || '',
-        'تاريخ بداية الإيجار': billboard.Rent_Start_Date || billboard.rent_start_date || '',
-        'تاريخ نهاية الإيجار': billboard.Rent_End_Date || billboard.rent_end_date || '',
-        'لوحة شراكة': billboard.is_partnership ? 'نعم' : 'لا',
-        'الشركات المشاركة': Array.isArray(billboard.partner_companies) 
-          ? billboard.partner_companies.join(', ') 
-          : billboard.partner_companies || '',
-        'رأس المال': billboard.capital || 0,
-        'المتبقي من رأس المال': billboard.capital_remaining || 0,
-        'إحداثيات GPS': billboard.GPS_Coordinates || '',
-        'رابط الصورة': billboard.Image_URL || billboard.image || ''
-      }));
+  const { 
+    billboards, 
+    loading, 
+    citiesList, 
+    dbSizes, 
+    dbMunicipalities, 
+    dbAdTypes, 
+    dbCustomers, 
+    dbContractNumbers, 
+    loadBillboards,
+    municipalities,
+    sizes,
+    levels,
+    faces,
+    billboardTypes,
+    setMunicipalities,
+    setSizes,
+    setLevels,
+    setBillboardTypes,
+    setDbMunicipalities,
+    setDbSizes,
+    sortBillboardsBySize
+  } = billboardData;
 
-      // Create workbook and worksheet
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(exportData);
+  const { isContractExpired, hasActiveContract } = billboardActions;
 
-      // Set column widths
-      const colWidths = [
-        { wch: 12 }, // رقم اللوحة
-        { wch: 15 }, // اسم اللوحة
-        { wch: 12 }, // المدينة
-        { wch: 15 }, // البلدية
-        { wch: 12 }, // المنطقة
-        { wch: 20 }, // أقرب معلم
-        { wch: 10 }, // المقاس
-        { wch: 8 },  // المستوى
-        { wch: 10 }, // الحالة
-        { wch: 12 }, // رقم العقد
-        { wch: 15 }, // اسم العميل
-        { wch: 12 }, // نوع الإعلان
-        { wch: 15 }, // تاريخ بداية الإيجار
-        { wch: 15 }, // تاريخ نهاية الإيجار
-        { wch: 12 }, // لوحة شراكة
-        { wch: 20 }, // الشركات المشاركة
-        { wch: 12 }, // رأس المال
-        { wch: 15 }, // المتبقي من رأس المال
-        { wch: 20 }, // إحداثيات GPS
-        { wch: 25 }  // رابط الصورة
-      ];
-      ws['!cols'] = colWidths;
-
-      // Add worksheet to workbook
-      XLSX.utils.book_append_sheet(wb, ws, 'اللوحات الإعلانية');
-
-      // Generate filename with current date
-      const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
-      const filename = `اللوحات_الإعلانية_${dateStr}.xlsx`;
-
-      // Save file
-      XLSX.writeFile(wb, filename);
-      
-      toast.success(`تم تنزيل ملف Excel: ${filename}`);
-    } catch (error) {
-      console.error('Error exporting to Excel:', error);
-      toast.error('فشل في تصدير ملف Excel');
-    }
-  };
-
-  // Print available billboards function
-  const printAvailableBillboards = () => {
-    try {
-      // Filter available billboards
-      const availableBillboards = billboards.filter((billboard: any) => {
-        const statusValue = String(billboard.Status ?? billboard.status ?? '').trim();
-        const statusLower = statusValue.toLowerCase();
-        const hasContract = !!(billboard.Contract_Number ?? billboard.contractNumber);
-        return (statusLower === 'available' || statusValue === 'متاح') && !hasContract;
-      });
-
-      if (availableBillboards.length === 0) {
-        toast.warning('لا توجد لوحات متاحة للطباعة');
-        return;
-      }
-
-      // Create print content
-      const printContent = `
-        <!DOCTYPE html>
-        <html dir="rtl" lang="ar">
-        <head>
-          <meta charset="UTF-8">
-          <title>اللوحات الإعلانية المتاحة</title>
-          <style>
-            body {
-              font-family: 'Arial', sans-serif;
-              margin: 20px;
-              direction: rtl;
-              text-align: right;
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 30px;
-              border-bottom: 2px solid #333;
-              padding-bottom: 20px;
-            }
-            .header h1 {
-              color: #333;
-              margin-bottom: 10px;
-            }
-            .header p {
-              color: #666;
-              margin: 5px 0;
-            }
-            .stats {
-              background: #f5f5f5;
-              padding: 15px;
-              border-radius: 8px;
-              margin-bottom: 20px;
-              text-align: center;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 20px;
-              font-size: 12px;
-            }
-            th, td {
-              border: 1px solid #ddd;
-              padding: 8px;
-              text-align: right;
-            }
-            th {
-              background-color: #f2f2f2;
-              font-weight: bold;
-            }
-            tr:nth-child(even) {
-              background-color: #f9f9f9;
-            }
-            .footer {
-              margin-top: 30px;
-              text-align: center;
-              font-size: 10px;
-              color: #666;
-              border-top: 1px solid #ddd;
-              padding-top: 15px;
-            }
-            @media print {
-              body { margin: 0; }
-              .no-print { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>اللوحات الإعلانية المتاحة</h1>
-            <p>تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</p>
-            <p>الوقت: ${new Date().toLocaleTimeString('ar-SA')}</p>
-          </div>
-          
-          <div class="stats">
-            <strong>إجمالي اللوحات المتاحة: ${availableBillboards.length} لوحة</strong>
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>رقم اللوحة</th>
-                <th>اسم اللوحة</th>
-                <th>المدينة</th>
-                <th>البلدية</th>
-                <th>المنطقة</th>
-                <th>أقرب معلم</th>
-                <th>المقاس</th>
-                <th>المستوى</th>
-                <th>إحداثيات GPS</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${availableBillboards.map((billboard: any) => `
-                <tr>
-                  <td>${billboard.ID || billboard.id || ''}</td>
-                  <td>${billboard.Billboard_Name || billboard.name || ''}</td>
-                  <td>${billboard.City || billboard.city || ''}</td>
-                  <td>${billboard.Municipality || billboard.municipality || ''}</td>
-                  <td>${billboard.District || billboard.district || ''}</td>
-                  <td>${billboard.Nearest_Landmark || billboard.location || ''}</td>
-                  <td>${billboard.Size || billboard.size || ''}</td>
-                  <td>${billboard.Level || billboard.level || ''}</td>
-                  <td>${billboard.GPS_Coordinates || ''}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-
-          <div class="footer">
-            <p>تم إنشاء هذا التقرير تلقائياً من نظام إدارة اللوحات الإعلانية</p>
-          </div>
-        </body>
-        </html>
-      `;
-
-      // Open print window
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-        printWindow.focus();
-        
-        // Wait for content to load then print
-        setTimeout(() => {
-          printWindow.print();
-        }, 500);
-        
-        toast.success(`تم تحضير ${availableBillboards.length} لوحة متاحة للطباعة`);
-      } else {
-        toast.error('فشل في فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة.');
-      }
-    } catch (error) {
-      console.error('Error printing available billboards:', error);
-      toast.error('فشل في طباعة اللوحات المتاحة');
-    }
-  };
-
-  // Load dropdown data
-  const loadDropdownData = async () => {
-    try {
-      // Load municipalities
-      const { data: munData } = await supabase.from('municipalities').select('*');
-      setMunicipalities(munData || []);
-
-      // Load sizes from pricing table
-      const { data: pricingData } = await supabase
-        .from('pricing')
-        .select('size')
-        .not('size', 'is', null);
-      const uniqueSizes = [...new Set((pricingData || []).map(p => p.size).filter(Boolean))];
-      setSizes(uniqueSizes);
-
-      // Load levels from pricing table (correct column name)
-      const { data: levelData } = await supabase
-        .from('pricing')
-        .select('billboard_level')
-        .not('billboard_level', 'is', null);
-      const uniqueLevels = [...new Set((levelData || [] as any[]).map((l: any) => l.billboard_level).filter(Boolean))];
-      setLevels(uniqueLevels);
-
-      // Load distinct cities from billboards
-      const { data: cityRows } = await supabase
-        .from('billboards')
-        .select('City')
-        .not('City', 'is', null);
-      const uniqueCities = [...new Set((cityRows || []).map((r: any) => r.City).filter(Boolean))] as string[];
-      setCitiesList(uniqueCities);
-    } catch (error) {
-      console.error('Error loading dropdown data:', error);
-    }
-  };
-
-  // Generate next billboard ID
-  const generateNextBillboardId = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('billboards')
-        .select('ID')
-        .order('ID', { ascending: false })
-        .limit(1);
-      
-      if (error) throw error;
-      
-      const lastId = data && data.length > 0 ? data[0].ID : 0;
-      return lastId + 1;
-    } catch (error) {
-      console.error('Error generating billboard ID:', error);
-      return 1;
-    }
-  };
-
-  // Generate billboard name based on municipality code and ID (e.g., SJ0002)
-  const generateBillboardName = (municipalityName: string, billboardId: number) => {
-    const municipality = municipalities.find(m => m.name === municipalityName);
-    const municipalityCode = (municipality?.code || 'UNK').toUpperCase();
-    return `${municipalityCode}${String(billboardId).padStart(4, '0')}`;
-  };
-
-  // Add new municipality if it doesn't exist
-  const addMunicipalityIfNew = async (name: string) => {
-    if (!name.trim()) return;
+  // ✅ ENHANCED: Better contract number extraction with multiple sources
+  const getCurrentContractNumber = (billboard: any): string => {
+    // Try multiple possible field names for contract numbers
+    const contractNum = billboard.Contract_Number || 
+                       billboard.contractNumber || 
+                       billboard.contract_number ||
+                       billboard.contract_id ||
+                       (billboard.contracts && billboard.contracts[0]?.Contract_Number) ||
+                       (billboard.contracts && billboard.contracts[0]?.contract_number) ||
+                       (billboard.contracts && billboard.contracts[0]?.id) ||
+                       '';
     
-    const exists = municipalities.find(m => m.name === name);
-    if (!exists) {
-      try {
-        const newCode = `AUTO-${String(municipalities.length + 1).padStart(3, '0')}`;
-        const { data, error } = await supabase
-          .from('municipalities')
-          .insert({ name: name.trim(), code: newCode })
-          .select()
-          .single();
-        
-        if (error) throw error;
-        
-        setMunicipalities(prev => [...prev, data]);
-        toast.success(`تم إضافة بلدية جديدة: ${name}`);
-      } catch (error) {
-        console.error('Error adding municipality:', error);
-      }
-    }
+    const result = String(contractNum).trim();
+    return result;
   };
 
-  // Add new size if it doesn't exist
-  const addSizeIfNew = async (size: string) => {
-    if (!size.trim()) return;
-    
-    const exists = sizes.find(s => s === size);
-    if (!exists) {
-      setSizes(prev => [...prev, size.trim()]);
-      toast.success(`تم إضافة مقاس جديد: ${size}`);
-    }
-  };
-
-  // Add new level if it doesn't exist
-  const addLevelIfNew = async (level: string) => {
-    if (!level.trim()) return;
-    
-    const exists = levels.find(l => l === level);
-    if (!exists) {
-      setLevels(prev => [...prev, level.trim()]);
-      toast.success(`تم إضافة مستوى جديد: ${level}`);
-    }
-  };
-
-  const openEdit = (bb: Billboard) => {
-    setEditing(bb);
-    setEditForm({
-      Billboard_Name: (bb as any).Billboard_Name || bb.name || '',
-      City: (bb as any).City || bb.city || '',
-      Municipality: (bb as any).Municipality || (bb as any).municipality || '',
-      District: (bb as any).District || (bb as any).district || '',
-      Nearest_Landmark: (bb as any).Nearest_Landmark || bb.location || '',
-      Size: (bb as any).Size || bb.size || '',
-      Status: (bb as any).Status || bb.status || 'available',
-      Level: (bb as any).Level || bb.level || 'A',
-      Contract_Number: (bb as any).contractNumber || (bb as any).Contract_Number || '',
-      Customer_Name: (bb as any).clientName || (bb as any).Customer_Name || '',
-      Ad_Type: (bb as any).adType || (bb as any).Ad_Type || '',
-      Image_URL: (bb as any).Image_URL || bb.image || '',
-      image_name: (bb as any).image_name || '',
-      // partnership fields
-      is_partnership: !!(bb as any).is_partnership,
-      partner_companies: (bb as any).partner_companies || (bb as any).partners || [],
-      capital: (bb as any).capital || 0,
-      capital_remaining: (bb as any).capital_remaining || (bb as any).capitalRemaining || (bb as any).capital || 0
-    });
-    setImagePreview((bb as any).Image_URL || (bb as any).image || '');
-    setEditOpen(true);
-  };
-
-  // Initialize add form with auto-generated ID
-  const initializeAddForm = async () => {
-    const nextId = await generateNextBillboardId();
-    setAddForm({
-      ID: nextId,
-      Billboard_Name: '',
-      City: '',
-      Municipality: '',
-      District: '',
-      Nearest_Landmark: '',
-      Size: '',
-      Level: '',
-      Image_URL: '',
-      image_name: '',
-      is_partnership: false,
-      partner_companies: [],
-      capital: 0,
-      capital_remaining: 0
-    });
-  };
-
-  // Update billboard name when municipality, level, or size changes
-  useEffect(() => {
-    if (addForm.Municipality && addForm.ID) {
-      const generatedName = generateBillboardName(addForm.Municipality, addForm.ID);
-      setAddForm(prev => ({ ...prev, Billboard_Name: generatedName }));
-    }
-  }, [addForm.Municipality, addForm.ID, municipalities]);
-
-  // Handle image selection for add/edit forms
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const preview = e.target?.result as string;
-        setImagePreview(preview);
-
-        const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.') + 1) : 'jpg';
-        const safeName = (isEdit ? (editForm.Billboard_Name || '') : (addForm.Billboard_Name || '')) || file.name.replace(/\.[^/.]+$/, '');
-        const sanitized = String(safeName).replace(/[^\w\u0600-\u06FF-]+/g, '_');
-        const imageName = `${sanitized}.${ext}`;
-        if (isEdit) {
-          setEditForm((prev: any) => ({ ...prev, image_name: imageName, Image_URL: `/image/${imageName}` }));
-        } else {
-          setAddForm((prev: any) => ({ ...prev, image_name: imageName, Image_URL: `/image/${imageName}` }));
-        }
-      };
-      reader.readAsDataURL(file);
-
-      toast.success(`تم اختيار الصورة: ${file.name}. سيتم استخدام اسم الملف بناءً على اسم اللوحة.`);
-    }
-  };
-
-  const saveEdit = async () => {
-    if (!editing) return;
-    setSaving(true);
-    const id = (editing as any).ID ?? (editing as any).id;
-    const { City, Municipality, District, Nearest_Landmark, Size, Level, Image_URL, image_name, is_partnership, partner_companies, capital, capital_remaining } = editForm as any;
-    
-    // Add new municipality if it doesn't exist
-    await addMunicipalityIfNew(Municipality);
-    
-    const payload: any = { 
-      // Billboard_Name is NOT included - it should not be editable in edit mode
-      City, 
-      Municipality, 
-      District, 
-      Nearest_Landmark, 
-      Size, 
-      Level, 
-      Image_URL, 
-      image_name,
-      is_partnership: !!is_partnership, 
-      partner_companies: Array.isArray(partner_companies) ? partner_companies : String(partner_companies).split(',').map(s=>s.trim()).filter(Boolean), 
-      capital: Number(capital)||0, 
-      capital_remaining: Number(capital_remaining)||Number(capital)||0 
-    };
-
-    const { error } = await supabase.from('billboards').update(payload).eq('ID', Number(id));
-
-    if (error) {
-      toast.error(`فشل حفظ التعديلات: ${error.message}`);
-    } else {
-      toast.success('تم حفظ التعديلات');
-      try {
-        await loadBillboards();
-      } catch {}
-      setEditOpen(false);
-      setEditing(null);
-      setImagePreview('');
-    }
-    setSaving(false);
-  };
-
-  // Rename selected image automatically when name changes
-  useEffect(() => {
-    if (addForm.Billboard_Name && addForm.image_name) {
-      const ext = addForm.image_name.includes('.') ? addForm.image_name.substring(addForm.image_name.lastIndexOf('.') + 1) : 'jpg';
-      const sanitized = String(addForm.Billboard_Name).replace(/[^\w\u0600-\u06FF-]+/g, '_');
-      const imageName = `${sanitized}.${ext}`;
-      if (imageName !== addForm.image_name) {
-        setAddForm((prev:any) => ({ ...prev, image_name: imageName, Image_URL: `/image/${imageName}` }));
-      }
-    }
-  }, [addForm.Billboard_Name]);
-
-  useEffect(() => {
-    if (editForm.Billboard_Name && editForm.image_name) {
-      const ext = editForm.image_name.includes('.') ? editForm.image_name.substring(editForm.image_name.lastIndexOf('.') + 1) : 'jpg';
-      const sanitized = String(editForm.Billboard_Name).replace(/[^\w\u0600-\u06FF-]+/g, '_');
-      const imageName = `${sanitized}.${ext}`;
-      if (imageName !== editForm.image_name) {
-        setEditForm((prev:any) => ({ ...prev, image_name: imageName, Image_URL: `/image/${imageName}` }));
-      }
-    }
-  }, [editForm.Billboard_Name]);
-
-  const addBillboard = async () => {
-    // Validate required fields
-    if (!addForm.Municipality || !addForm.Level || !addForm.Size) {
-      toast.error('يرجى تحديد البلدية والمستوى والمقاس');
+  // Handle maintenance status update
+  const handleMaintenanceSubmit = async () => {
+    if (!selectedBillboard || !maintenanceForm.status) {
+      toast.error('يرجى اختيار حالة الصيانة');
       return;
     }
 
-    setAdding(true);
-    const { ID, Billboard_Name, City, Municipality, District, Nearest_Landmark, GPS_Coordinates, Size, Level, Image_URL, image_name, is_partnership, partner_companies, capital, capital_remaining } = addForm as any;
-    
-    // Add new municipality, size, level if they don't exist
-    await addMunicipalityIfNew(Municipality);
-    await addSizeIfNew(Size);
-    await addLevelIfNew(Level);
-    
-    const payload: any = {
-      ID: Number(ID),
-      Billboard_Name,
-      City,
-      Municipality,
-      District,
-      Nearest_Landmark,
-      GPS_Coordinates: GPS_Coordinates || null,
-      Size,
-      Level,
-      Image_URL,
-      image_name,
-      Status: 'متاح', // Always available by default, status is managed by contracts
-      is_partnership: !!is_partnership,
-      partner_companies: Array.isArray(partner_companies) ? partner_companies : String(partner_companies).split(',').map(s=>s.trim()).filter(Boolean),
-      capital: Number(capital)||0,
-      capital_remaining: Number(capital_remaining)||Number(capital)||0
-    };
     try {
-      const { error } = await supabase.from('billboards').insert(payload).select().single();
+      const { error } = await supabase
+        .from('billboards')
+        .update({
+          maintenance_status: maintenanceForm.status,
+          maintenance_date: new Date().toISOString(),
+          maintenance_notes: maintenanceForm.description || null,
+          maintenance_type: maintenanceForm.type || null,
+          maintenance_priority: maintenanceForm.priority
+        })
+        .eq('ID', selectedBillboard.ID);
+
       if (error) throw error;
-      toast.success('تم إضافة اللوحة');
-      await loadBillboards();
-      setAddOpen(false);
-      setImagePreview('');
-      await initializeAddForm(); // Reset form with new ID
-    } catch (e:any) {
-      console.error('add billboard error', e);
-      toast.error(e?.message || 'فشل الإضافة');
-    } finally {
-      setAdding(false);
-    }
-  };
 
-  const loadBillboards = async () => {
-    try {
-      const data = await fetchAllBillboards();
-      setBillboards(data as any);
-      console.log('Loaded billboards (with fallbacks):', data.length);
+      // Add maintenance history record if needed
+      if (maintenanceForm.type && maintenanceForm.description) {
+        await supabase
+          .from('maintenance_history')
+          .insert({
+            billboard_id: selectedBillboard.ID,
+            maintenance_type: maintenanceForm.type,
+            description: maintenanceForm.description,
+            priority: maintenanceForm.priority,
+            maintenance_date: new Date().toISOString()
+          });
+      }
+
+      toast.success('تم تحديث حالة الصيانة بنجاح');
+      setIsMaintenanceDialogOpen(false);
+      setMaintenanceForm({
+        status: '',
+        type: '',
+        description: '',
+        priority: 'normal'
+      });
+      loadBillboards();
     } catch (error) {
-      console.error('خطأ في تحميل اللوحات:', (error as any)?.message || JSON.stringify(error));
-      setBillboards([] as any);
+      console.error('Error updating maintenance status:', error);
+      toast.error('فشل في تحديث حالة الصيانة');
     }
   };
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      await loadDropdownData();
+  // ✅ إنشاء نافذة تأكيد مخصصة بنمط النظام
+  const showSystemConfirm = (title: string, message: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      // إنشاء عنصر النافذة المنبثقة
+      const overlay = document.createElement('div');
+      overlay.className = 'custom-confirm-overlay';
+      
+      const dialog = document.createElement('div');
+      dialog.className = 'custom-confirm-dialog';
+      
+      dialog.innerHTML = `
+        <div class="system-dialog-header">
+          <h3 class="system-dialog-title">${title}</h3>
+        </div>
+        <div class="system-dialog-content">
+          <p style="white-space: pre-line; line-height: 1.6; margin-bottom: 20px;">${message}</p>
+          <div class="system-dialog-buttons">
+            <button class="system-btn-secondary" id="cancel-btn">إلغاء</button>
+            <button class="system-btn-primary" id="confirm-btn">حذف</button>
+          </div>
+        </div>
+      `;
+      
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+      document.body.style.overflow = 'hidden';
+      
+      const cleanup = () => {
+        document.body.removeChild(overlay);
+        document.body.style.overflow = 'unset';
+      };
+      
+      const confirmBtn = dialog.querySelector('#confirm-btn');
+      const cancelBtn = dialog.querySelector('#cancel-btn');
+      
+      confirmBtn?.addEventListener('click', () => {
+        cleanup();
+        resolve(true);
+      });
+      
+      cancelBtn?.addEventListener('click', () => {
+        cleanup();
+        resolve(false);
+      });
+      
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          cleanup();
+          resolve(false);
+        }
+      });
+      
+      // إضافة دعم مفتاح Escape
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          cleanup();
+          resolve(false);
+          document.removeEventListener('keydown', handleEscape);
+        }
+      };
+      document.addEventListener('keydown', handleEscape);
+    });
+  };
+
+  // ✅ COMPLETELY FIXED: Delete function with better error handling and system-style confirmation
+  const deleteBillboard = async (billboardId: number | string) => {
+    try {
+      // ✅ ENHANCED: Better confirmation dialog
+      const billboardName = billboards.find(b => (b.ID || b.id) == billboardId)?.Billboard_Name || `اللوحة رقم ${billboardId}`;
+      
+      const confirmed = await showSystemConfirm(
+        'تأكيد حذف اللوحة',
+        `هل تريد حذف "${billboardName}"؟\n\nتحذير: هذا الإجراء لا يمكن التراجع عنه!`
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+      
+      // ✅ ENHANCED: Better ID validation and conversion
+      const id = Number(billboardId);
+      if (!id || isNaN(id) || id <= 0) {
+        toast.error('معرف اللوحة غير صحيح');
+        console.error('❌ Invalid billboard ID:', billboardId);
+        return;
+      }
+
+      console.log('🗑️ Attempting to delete billboard with ID:', id);
+      
+      // ✅ FINAL FIX: Use ONLY the correct field name "ID" (uppercase) from database
+      const { error } = await supabase
+        .from('billboards')
+        .delete()
+        .eq('ID', id);
+        
+      if (error) {
+        console.error('❌ Delete error:', error);
+        // ✅ ENHANCED: Better error handling with specific error messages
+        if (error.code === '23503') {
+          toast.error('لا يمكن حذف هذه اللوحة لأنها مرتبطة بعقود أو بيانات أخرى');
+        } else if (error.code === '42703') {
+          toast.error('خطأ في بنية قاعدة البيانات - يرجى الاتصال بالدعم الفني');
+        } else if (error.code === 'PGRST116') {
+          toast.error('لا توجد لوحة بهذا المعرف');
+        } else {
+          toast.error(`فشل في حذف اللوحة: ${error.message}`);
+        }
+        return;
+      }
+      
+      console.log('✅ Billboard deleted successfully');
+      toast.success(`تم حذف "${billboardName}" بنجاح`);
       await loadBillboards();
-      await initializeAddForm();
-      setLoading(false);
-    };
-
-    fetchData();
-  }, []);
-
-  const cities = [...new Set(billboards.map(b => (b as any).City || b.city).filter(Boolean))];
-  const billboardSizes = [...new Set(billboards.map(b => (b as any).Size || b.size).filter(Boolean))];
-  const billboardMunicipalities = [...new Set(billboards.map(b => (b as any).Municipality || (b as any).municipality).filter(Boolean))];
-  const districts = [...new Set(billboards.map(b => (b as any).District || (b as any).district).filter(Boolean))];
-  const uniqueAdTypes = [...new Set(billboards.map((b:any) => (b.Ad_Type ?? b['Ad Type'] ?? b.adType ?? '')).filter(Boolean))] as string[];
-  const uniqueCustomers = [...new Set(billboards.map((b:any) => (b.Customer_Name ?? b.clientName ?? b.contract?.customer_name ?? '')).filter(Boolean))] as string[];
-  const uniqueContractNumbers = [...new Set(billboards.map((b:any) => String(b.Contract_Number ?? b.contractNumber ?? '')).filter((v:string) => v && v !== 'undefined' && v !== 'null'))] as string[];
-
-  // Keep citiesList in sync with loaded billboards as a fallback
-  useEffect(() => {
-    const uniq = [...new Set(billboards.map((b:any) => (b.City || b.city)).filter(Boolean))];
-    if (uniq.length && (!citiesList.length || uniq.length !== citiesList.length)) setCitiesList(uniq as string[]);
-  }, [billboards]);
-
-  const searched = searchBillboards(billboards, searchQuery);
-  const filteredBillboards = searched.filter((billboard) => {
-    const statusValue = String(((billboard as any).Status ?? (billboard as any).status ?? '')).trim();
-    const statusLower = statusValue.toLowerCase();
-    const hasContract = !!(((billboard as any).Contract_Number ?? (billboard as any).contractNumber));
-    const isAvailable = (statusLower === 'available' || statusValue === 'متاح') && !hasContract;
-    const isBooked = (statusLower === 'rented' || statusValue === 'مؤجر' || statusValue === 'محجوز') || hasContract;
-    let isNearExpiry = false;
-    const end = (billboard as any).Rent_End_Date ?? (billboard as any).rent_end_date;
-    if (end) {
-      try {
-        const endDate = new Date(end);
-        const diffDays = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
-        isNearExpiry = diffDays > 0 && diffDays <= 20;
-      } catch {}
+    } catch (error: any) {
+      console.error('❌ Delete billboard error:', error);
+      toast.error(error?.message || 'فشل في حذف اللوحة');
     }
-    const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.some(s => (
-      (s === 'متاحة' && isAvailable) ||
-      (s === 'محجوز' && isBooked) ||
-      (s === 'قريبة الانتهاء' && isNearExpiry)
-    ));
-    const matchesCity = selectedCities.length === 0 || selectedCities.includes((billboard as any).City || billboard.city || '');
-    const matchesSize = sizeFilter === 'all' || (((billboard as any).Size || billboard.size || '') === sizeFilter);
-    const matchesMunicipality = municipalityFilter === 'all' || (((billboard as any).Municipality || (billboard as any).municipality || '') === municipalityFilter);
-    const adTypeVal = String((billboard as any).Ad_Type ?? (billboard as any)['Ad Type'] ?? (billboard as any).adType ?? '');
-    const matchesAdType = adTypeFilter === 'all' || adTypeVal === adTypeFilter;
-    const customerVal = String((billboard as any).Customer_Name ?? (billboard as any).clientName ?? (billboard as any).contract?.customer_name ?? '');
-    const matchesCustomer = selectedCustomers.length === 0 || selectedCustomers.includes(customerVal);
-    const contractNoVal = String((billboard as any).Contract_Number ?? (billboard as any).contractNumber ?? '');
-    const matchesContractNo = selectedContractNumbers.length === 0 || selectedContractNumbers.includes(contractNoVal);
-    return matchesStatus && matchesCity && matchesSize && matchesMunicipality && matchesAdType && matchesCustomer && matchesContractNo;
-  });
+  };
 
-  const totalPages = Math.max(1, Math.ceil(filteredBillboards.length / PAGE_SIZE));
+  // ✅ ENHANCED: Search function with support for billboard names and nearest landmark
+  const enhancedSearchBillboards = (billboards: any[], query: string) => {
+    if (!query.trim()) return billboards;
+    
+    const searchTerm = query.toLowerCase().trim();
+    console.log('🔍 البحث عن:', searchTerm);
+    
+    return billboards.filter((billboard) => {
+      // ✅ Billboard name search with multiple field variations
+      const billboardName = String(
+        billboard.Billboard_Name || 
+        billboard.billboardName || 
+        billboard.billboard_name ||
+        billboard.name ||
+        ''
+      ).toLowerCase();
+      
+      // ✅ ENHANCED: Nearest landmark search with multiple field variations
+      const nearestLandmark = String(
+        billboard['Nearest Landmark'] ||
+        billboard.nearestLandmark ||
+        billboard.nearest_landmark ||
+        billboard.Nearest_Landmark ||
+        billboard['أقرب نقطة دالة'] ||
+        billboard.landmark ||
+        billboard.Location ||
+        billboard.location ||
+        billboard.Address ||
+        billboard.address ||
+        ''
+      ).toLowerCase();
+      
+      // Municipality search with multiple field variations
+      const municipality = String(
+        billboard.Municipality || 
+        billboard.municipality || 
+        billboard.Municipality_Name ||
+        billboard.municipality_name ||
+        ''
+      ).toLowerCase();
+      
+      // City search
+      const city = String(
+        billboard.City || 
+        billboard.city || 
+        billboard.City_Name ||
+        billboard.city_name ||
+        ''
+      ).toLowerCase();
+      
+      // Contract number search
+      const contractNumber = String(getCurrentContractNumber(billboard)).toLowerCase();
+      
+      // Ad type search with multiple field variations
+      const adType = String(
+        billboard.Ad_Type || 
+        billboard.adType || 
+        billboard.ad_type || 
+        billboard.AdType || 
+        (billboard.contracts && billboard.contracts[0]?.['Ad Type']) || 
+        ''
+      ).toLowerCase();
+      
+      // Customer name search
+      const customerName = String(
+        billboard.Customer_Name || 
+        billboard.clientName || 
+        billboard.customer_name ||
+        (billboard.contracts && billboard.contracts[0]?.['Customer Name']) || 
+        ''
+      ).toLowerCase();
+      
+      // Size search
+      const size = String(
+        billboard.Size || 
+        billboard.size || 
+        ''
+      ).toLowerCase();
+      
+      // ✅ ENHANCED: Comprehensive search matching including nearest landmark
+      const matches = billboardName.includes(searchTerm) ||
+                     nearestLandmark.includes(searchTerm) ||
+                     municipality.includes(searchTerm) ||
+                     city.includes(searchTerm) ||
+                     contractNumber.includes(searchTerm) ||
+                     adType.includes(searchTerm) ||
+                     customerName.includes(searchTerm) ||
+                     size.includes(searchTerm);
+      
+      if (matches) {
+        console.log('✅ تطابق:', {
+          name: billboardName,
+          nearestLandmark,
+          municipality,
+          city,
+          searchTerm
+        });
+      }
+      
+      return matches;
+    });
+  };
+
+  // ✅ ENHANCED: Enhanced filtering with "منتهي" status support
+  const filteredBillboards = useMemo(() => {
+    console.log('🔄 Filtering billboards...', {
+      totalBillboards: billboards.length,
+      searchQuery,
+      selectedContractNumbers,
+      selectedStatuses,
+      adTypeFilter,
+      dbAdTypes: dbAdTypes.slice(0, 5),
+      dbContractNumbers: dbContractNumbers.slice(0, 5)
+    });
+    
+    const searched = enhancedSearchBillboards(billboards, searchQuery);
+    console.log('🔍 نتائج البحث:', searched.length, 'من أصل', billboards.length);
+    
+    return searched.filter((billboard) => {
+      const statusValue = String(((billboard as any).Status ?? (billboard as any).status ?? '')).trim();
+      const statusLower = statusValue.toLowerCase();
+      const hasContract = !!(getCurrentContractNumber(billboard) && getCurrentContractNumber(billboard) !== '0');
+      const contractExpired = isContractExpired((billboard as any).Rent_End_Date ?? (billboard as any).rent_end_date);
+      
+      const isAvailable = (statusLower === 'available' || statusValue === 'متاح') || !hasContract || contractExpired;
+      const isBooked = ((statusLower === 'rented' || statusValue === 'مؤجر' || statusValue === 'محجوز') || hasContract) && !contractExpired;
+      
+      let isNearExpiry = false;
+      const end = (billboard as any).Rent_End_Date ?? (billboard as any).rent_end_date;
+      if (end && !contractExpired) {
+        try {
+          const endDate = new Date(end);
+          const diffDays = Math.ceil((endDate.getTime() - Date.now()) / 86400000);
+          isNearExpiry = diffDays > 0 && diffDays <= 20;
+        } catch {}
+      }
+
+      // ✅ NEW: Check if contract is expired (منتهي status)
+      const isExpired = contractExpired && hasContract;
+      
+      const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.some(s => (
+        (s === 'متاحة' && isAvailable) ||
+        (s === 'محجوز' && isBooked) ||
+        (s === 'قريبة الانتهاء' && isNearExpiry) ||
+        (s === 'منتهي' && isExpired)
+      ));
+      
+      const matchesCity = selectedCities.length === 0 || selectedCities.includes((billboard as any).City || billboard.city || '');
+      const matchesSize = sizeFilter === 'all' || (((billboard as any).Size || billboard.size || '') === sizeFilter);
+      const matchesMunicipality = municipalityFilter === 'all' || (((billboard as any).Municipality || (billboard as any).municipality || '') === municipalityFilter);
+      
+      // ✅ FIXED: Better ad type matching with multiple field variations
+      const adTypeVal = String(billboard.Ad_Type || billboard.adType || billboard.ad_type || billboard.AdType || 
+                              (billboard.contracts && billboard.contracts[0]?.['Ad Type']) || '').trim();
+      const matchesAdType = adTypeFilter === 'all' || adTypeVal === adTypeFilter;
+      
+      const customerVal = String((billboard as any).Customer_Name ?? (billboard as any).clientName ?? '');
+      const matchesCustomer = selectedCustomers.length === 0 || selectedCustomers.includes(customerVal);
+      
+      // ✅ ENHANCED: Contract number filtering with better matching logic
+      const contractNoVal = getCurrentContractNumber(billboard);
+      let matchesContractNo = true;
+      
+      if (selectedContractNumbers.length > 0) {
+        if (!contractNoVal || contractNoVal === '0' || contractNoVal === '') {
+          matchesContractNo = false;
+        } else {
+          matchesContractNo = selectedContractNumbers.some(selectedContract => {
+            const selected = String(selectedContract).trim();
+            const current = String(contractNoVal).trim();
+            
+            // Exact match
+            if (current === selected) return true;
+            
+            // Try numeric comparison for contract numbers
+            const selectedNum = parseInt(selected);
+            const currentNum = parseInt(current);
+            if (!isNaN(selectedNum) && !isNaN(currentNum) && selectedNum === currentNum) {
+              return true;
+            }
+            
+            return false;
+          });
+        }
+      }
+      
+      const result = matchesStatus && matchesCity && matchesSize && matchesMunicipality && matchesAdType && matchesCustomer && matchesContractNo;
+      
+      return result;
+    });
+  }, [billboards, searchQuery, selectedStatuses, selectedCities, sizeFilter, municipalityFilter, adTypeFilter, selectedCustomers, selectedContractNumbers, isContractExpired]);
+
+  // ✅ FIXED: Use useMemo for sorted filtered billboards to prevent re-sorting
+  const sortedFilteredBillboards = useMemo(() => {
+    if (filteredBillboards.length === 0) return [];
+    
+    // Use synchronous sorting instead of async to prevent state updates
+    const sizeOrder: { [key: string]: number } = {
+      '13*5': 1, '13x5': 1, '13×5': 1, '5*13': 1, '5x13': 1, '5×13': 1,
+      '12*4': 2, '12x4': 2, '12×4': 2, '4*12': 2, '4x12': 2, '4×12': 2,
+      '10*4': 3, '10x4': 3, '10×4': 3, '4*10': 3, '4x10': 3, '4×10': 3,
+      '8*3': 4, '8x3': 4, '8×3': 4, '3*8': 4, '3x8': 4, '3×8': 4,
+      '6*3': 5, '6x3': 5, '6×3': 5, '3*6': 5, '3x6': 5, '3×6': 5,
+      '4*3': 6, '4x3': 6, '4×3': 6, '3*4': 6, '3x4': 6, '3×4': 6,
+      '5*3': 7, '5x3': 7, '5×3': 7, '3*5': 7, '3x5': 7, '3×5': 7
+    };
+    
+    return [...filteredBillboards].sort((a, b) => {
+      const sizeA = a.Size || a.size || '';
+      const sizeB = b.Size || b.size || '';
+      
+      const orderA = sizeOrder[sizeA] || 999;
+      const orderB = sizeOrder[sizeB] || 999;
+      
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      
+      const idA = a.ID || a.id || 0;
+      const idB = b.ID || b.id || 0;
+      return idA - idB;
+    });
+  }, [filteredBillboards]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedFilteredBillboards.length / PAGE_SIZE));
   const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const pagedBillboards = filteredBillboards.slice(startIndex, startIndex + PAGE_SIZE);
+  const pagedBillboards = sortedFilteredBillboards.slice(startIndex, startIndex + PAGE_SIZE);
 
-  // Calculate available billboards count
-  const availableBillboardsCount = billboards.filter((billboard: any) => {
-    const statusValue = String(billboard.Status ?? billboard.status ?? '').trim();
-    const statusLower = statusValue.toLowerCase();
-    const hasContract = !!(billboard.Contract_Number ?? billboard.contractNumber);
-    return (statusLower === 'available' || statusValue === 'متاح') && !hasContract;
-  }).length;
+  // ✅ UPDATED: Calculate available billboards count with useMemo
+  const availableBillboardsCount = useMemo(() => {
+    return billboards.filter((billboard: any) => {
+      const statusValue = String(billboard.Status ?? billboard.status ?? '').trim();
+      const statusLower = statusValue.toLowerCase();
+      const hasContract = !!(getCurrentContractNumber(billboard) && getCurrentContractNumber(billboard) !== '0');
+      const contractExpired = isContractExpired(billboard.Rent_End_Date ?? billboard.rent_end_date);
+      
+      return (statusLower === 'available' || statusValue === 'متاح') || !hasContract || contractExpired;
+    }).length;
+  }, [billboards, isContractExpired]);
+
+  // ✅ FIXED: Reset current page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedStatuses, selectedCities, sizeFilter, municipalityFilter, adTypeFilter, selectedCustomers, selectedContractNumbers]);
+
+  // ✅ FIXED: Stable pagination handlers with useCallback
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prev => prev - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(prev => prev + 1);
+    }
+  };
+
+  // ✅ FIXED: Simple pagination without complex components
+  const PaginationControls = () => (
+    <div className="flex items-center justify-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handlePreviousPage}
+        disabled={currentPage === 1}
+        className="px-3 py-1"
+      >
+        السابق
+      </Button>
+      
+      {(() => {
+        const windowSize = 5;
+        let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+        let end = start + windowSize - 1;
+        if (end > totalPages) {
+          end = totalPages;
+          start = Math.max(1, end - windowSize + 1);
+        }
+        return Array.from({ length: end - start + 1 }, (_, idx) => start + idx).map((p) => (
+          <Button
+            key={p}
+            variant={currentPage === p ? "default" : "outline"}
+            size="sm"
+            onClick={() => handlePageChange(p)}
+            className="w-8 h-8 p-0"
+          >
+            {p}
+          </Button>
+        ));
+      })()}
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleNextPage}
+        disabled={currentPage === totalPages}
+        className="px-3 py-1"
+      >
+        التالي
+      </Button>
+    </div>
+  );
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="expenses-loading">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">جاري تحميل اللوحات الإعلانية...</p>
@@ -679,162 +598,203 @@ export default function Billboards() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* العنوان والأزرار */}
+    <div className="expenses-container">
+      {/* Header and Actions */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">إدارة اللوحات الإعلانية</h1>
-          <p className="text-muted-foreground">عرض وإدارة جميع اللوحات الإعلانية مع معلومات العقود المرتبطة</p>
+          <h1 className="section-header">إدارة اللوحات الإعلانية</h1>
+          <p className="text-muted">عرض وإدارة جميع اللوحات الإعلانية مع ترتيب المقاسات من قاعدة البيانات وبيانات العقود المحدثة</p>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            onClick={exportToExcel}
-            variant="outline"
-            className="gap-2"
-          >
-            <Download className="h-4 w-4" />
-            تصدير Excel
-          </Button>
-          <Button 
-            onClick={printAvailableBillboards}
-            variant="outline"
-            className="gap-2"
-          >
-            <Printer className="h-4 w-4" />
-            طباعة المتاحة ({availableBillboardsCount})
-          </Button>
-          <Button onClick={() => {
-            initializeAddForm();
-            setAddOpen(true);
-          }} className="bg-gradient-primary text-white shadow-elegant hover:shadow-glow transition-smooth">
-            <Plus className="h-4 w-4 ml-2" />
-            إضافة لوحة
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/admin/shared-billboards')}>اللوحات المشتركة</Button>
+        <BillboardActions
+          exportToExcel={() => billboardExport.exportToExcel(billboards)}
+          exportAvailableToExcel={() => billboardExport.exportAvailableToExcel(billboards, isContractExpired)}
+          exportFollowUpToExcel={() => billboardExport.exportFollowUpToExcel(billboards)}
+          setPrintFiltersOpen={setPrintFiltersOpen}
+          availableBillboardsCount={availableBillboardsCount}
+          initializeAddForm={billboardForm.initializeAddForm}
+          setAddOpen={billboardForm.setAddOpen}
+        />
+      </div>
+
+      {/* ✅ Enhanced info section with luxury styling */}
+      <div className="expenses-preview-card">
+        <div className="p-6">
+          <h3 className="expenses-preview-title mb-4">إحصائيات اللوحات الإعلانية</h3>
+          <div className="expenses-stats-grid">
+            <div className="expenses-stat-card card-elegant">
+              <div className="expenses-stat-content">
+                <div>
+                  <div className="expenses-stat-text">إجمالي اللوحات</div>
+                  <div className="expenses-stat-value text-blue">{billboards.length}</div>
+                </div>
+                <MapPin className="expenses-stat-icon text-blue" />
+              </div>
+            </div>
+            <div className="expenses-stat-card card-elegant">
+              <div className="expenses-stat-content">
+                <div>
+                  <div className="expenses-stat-text">اللوحات المتاحة</div>
+                  <div className="expenses-stat-value text-green">{availableBillboardsCount}</div>
+                </div>
+                <MapPin className="expenses-stat-icon text-green" />
+              </div>
+            </div>
+            <div className="expenses-stat-card card-elegant">
+              <div className="expenses-stat-content">
+                <div>
+                  <div className="expenses-stat-text">أسماء الزبائن</div>
+                  <div className="expenses-stat-value text-purple">{dbCustomers.length}</div>
+                  <div className="text-xs text-purple">من العقود النشطة</div>
+                </div>
+                <MapPin className="expenses-stat-icon text-purple" />
+              </div>
+            </div>
+            <div className="expenses-stat-card card-elegant">
+              <div className="expenses-stat-content">
+                <div>
+                  <div className="expenses-stat-text">أنواع الإعلانات</div>
+                  <div className="expenses-stat-value text-orange">{dbAdTypes.length}</div>
+                  <div className="text-xs text-orange">من العقود النشطة</div>
+                </div>
+                <MapPin className="expenses-stat-icon text-orange" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* أدوات التصفية والبحث */}
-      <Card className="bg-gradient-card border-0 shadow-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Filter className="h-5 w-5 text-primary" />
-            البحث في اللوحات...
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="ابحث عن اللوحات..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pr-10"
-              />
+      {/* ✅ FIXED: Search results counter with proper styling */}
+      <div className="expenses-preview-card">
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-primary">
+              <MapPin className="h-4 w-4" />
+              <span className="expenses-preview-text">
+                نتائج البحث: <span className="expenses-stat-value text-primary">{sortedFilteredBillboards.length}</span> لوحة من أصل <span className="expenses-stat-value text-primary">{billboards.length}</span>
+              </span>
             </div>
-            
-            <MultiSelect
-              options={[
-                { label: 'متاحة', value: 'متاحة' },
-                { label: 'قريبة الانتهاء', value: 'قريبة الانتهاء' },
-                { label: 'محجوز', value: 'محجوز' },
-              ]}
-              value={selectedStatuses}
-              onChange={setSelectedStatuses}
-              placeholder="الحالة (متعدد)"
-            />
-
-            <MultiSelect
-              options={cities.map(c => ({ label: c, value: c }))}
-              value={selectedCities}
-              onChange={setSelectedCities}
-              placeholder="جميع المدن"
-            />
-
-            <Select value={sizeFilter} onValueChange={setSizeFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="حجم اللوحة" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">جميع الأحجام</SelectItem>
-                {billboardSizes.map((s) => (<SelectItem key={String(s)} value={String(s)}>{String(s)}</SelectItem>))}
-              </SelectContent>
-            </Select>
-
-            <Select value={municipalityFilter} onValueChange={setMunicipalityFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="البلدية" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">جميع البلديات</SelectItem>
-                {billboardMunicipalities.map((m) => (<SelectItem key={String(m)} value={String(m)}>{String(m)}</SelectItem>))}
-              </SelectContent>
-            </Select>
-
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  {adTypeFilter === 'all' ? 'نوع الإعلان (الكل)' : `نوع الإعلان: ${adTypeFilter}`}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-0" align="start">
-                <Command>
-                  <CommandInput placeholder="ابحث عن نوع الإعلان..." />
-                  <CommandList>
-                    <CommandEmpty>لا يوجد نتائج</CommandEmpty>
-                    <CommandGroup>
-                      <CommandItem onSelect={() => setAdTypeFilter('all')}>الكل</CommandItem>
-                      {uniqueAdTypes.map((t) => (
-                        <CommandItem key={t} onSelect={() => setAdTypeFilter(t)}>{t}</CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-
-            <MultiSelect
-              options={uniqueCustomers.map((c) => ({ label: c, value: c }))}
-              value={selectedCustomers}
-              onChange={setSelectedCustomers}
-              placeholder="أسماء الزبائن (متعدد)"
-            />
-
-            <MultiSelect
-              options={uniqueContractNumbers.map((n) => ({ label: n, value: n }))}
-              value={selectedContractNumbers}
-              onChange={setSelectedContractNumbers}
-              placeholder="أرقام العقود (متعدد)"
-            />
+            <div className="expenses-preview-text">
+              الصفحة {currentPage} من {totalPages}
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* عرض اللوحات */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Filters */}
+      <BillboardFilters
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        selectedStatuses={selectedStatuses}
+        setSelectedStatuses={setSelectedStatuses}
+        selectedCities={selectedCities}
+        setSelectedCities={setSelectedCities}
+        sizeFilter={sizeFilter}
+        setSizeFilter={setSizeFilter}
+        municipalityFilter={municipalityFilter}
+        setMunicipalityFilter={setMunicipalityFilter}
+        adTypeFilter={adTypeFilter}
+        setAdTypeFilter={setAdTypeFilter}
+        selectedCustomers={selectedCustomers}
+        setSelectedCustomers={setSelectedCustomers}
+        selectedContractNumbers={selectedContractNumbers}
+        setSelectedContractNumbers={setSelectedContractNumbers}
+        cities={citiesList}
+        billboardSizes={dbSizes}
+        billboardMunicipalities={dbMunicipalities}
+        uniqueAdTypes={dbAdTypes}
+        uniqueCustomers={dbCustomers}
+        uniqueContractNumbers={dbContractNumbers}
+      />
+
+      {/* Top Pagination */}
+      {sortedFilteredBillboards.length > 0 && (
+        <div className="flex justify-center mb-4">
+          <PaginationControls />
+        </div>
+      )}
+
+      {/* Billboard Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {pagedBillboards.map((billboard, idx) => {
           const keyVal = String((billboard as any).id ?? (billboard as any).ID ?? `${(billboard as any).Billboard_Name ?? 'bb'}-${startIndex + idx}`);
+          const hasContract = hasActiveContract(billboard);
+          
           return (
             <div key={keyVal} className="space-y-2">
               <BillboardGridCard billboard={billboard as any} showBookingActions={false} />
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(billboard)}>
+                <Button variant="outline" size="sm" className="flex-1 card-hover" onClick={() => billboardForm.setEditing(billboard)}>
                   <Edit className="h-4 w-4 ml-1" />
                   تعديل
                 </Button>
-                <Button variant="destructive" size="sm" onClick={async () => {
-                  try {
-                    if (!window.confirm('هل تريد حذف هذه اللوحة؟')) return;
-                    const bid = (billboard as any).ID ?? (billboard as any).id;
-                    const { error } = await supabase.from('billboards').delete().eq('ID', Number(bid));
-                    if (error) throw error;
-                    toast.success('تم حذف اللوحة');
-                    await loadBillboards();
-                  } catch (e:any) {
-                    toast.error(e?.message || 'فشل الحذف');
-                  }
-                }}>
+                
+                {/* زر موقع اللوحة */}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="card-hover"
+                  onClick={() => {
+                    if (billboard.GPS_Link) {
+                      window.open(billboard.GPS_Link, '_blank');
+                    } else {
+                      toast.error('لا يوجد رابط موقع لهذه اللوحة');
+                    }
+                  }}
+                  disabled={!billboard.GPS_Link}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+
+                {/* زر صيانة اللوحة */}
+                <Dialog open={isMaintenanceDialogOpen} onOpenChange={setIsMaintenanceDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="card-hover"
+                      onClick={() => {
+                        setSelectedBillboard(billboard);
+                        setMaintenanceForm({
+                          status: billboard.maintenance_status || '',
+                          type: billboard.maintenance_type || '',
+                          description: billboard.maintenance_notes || '',
+                          priority: billboard.maintenance_priority || 'normal'
+                        });
+                      }}
+                    >
+                      <Wrench className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                </Dialog>
+                
+                <Button 
+                  variant={hasContract ? "secondary" : "default"} 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => billboardContract.openContractDialog(billboard)}
+                >
+                  {hasContract ? (
+                    <>
+                      <Unlink className="h-4 w-4 ml-1" />
+                      إزالة من العقد
+                    </>
+                  ) : (
+                    <>
+                      <Link className="h-4 w-4 ml-1" />
+                      إضافة إلى عقد
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={() => {
+                    // ✅ ENHANCED: Better ID extraction with multiple fallbacks
+                    const billboardId = (billboard as any).ID || (billboard as any).id;
+                    console.log('🔍 Billboard ID for deletion:', billboardId, 'Billboard object:', billboard);
+                    deleteBillboard(billboardId);
+                  }}
+                >
                   حذف
                 </Button>
               </div>
@@ -843,47 +803,16 @@ export default function Billboards() {
         })}
       </div>
 
-      {filteredBillboards.length > 0 && (
-        <div className="mt-6">
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
-                />
-              </PaginationItem>
-
-              {(() => {
-                const windowSize = 5;
-                let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
-                let end = start + windowSize - 1;
-                if (end > totalPages) {
-                  end = totalPages;
-                  start = Math.max(1, end - windowSize + 1);
-                }
-                return Array.from({ length: end - start + 1 }, (_, idx) => start + idx).map((p) => (
-                  <PaginationItem key={p}>
-                    <PaginationLink isActive={currentPage === p} onClick={() => setCurrentPage(p)}>
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                ));
-              })()}
-
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className={currentPage === totalPages ? 'pointer-events-none opacity-50' : ''}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+      {/* Bottom Pagination */}
+      {sortedFilteredBillboards.length > 0 && (
+        <div className="flex justify-center mt-6">
+          <PaginationControls />
         </div>
       )}
 
-      {filteredBillboards.length === 0 && (
-        <Card className="bg-gradient-card border-0 shadow-card">
+      {/* No Results */}
+      {sortedFilteredBillboards.length === 0 && (
+        <Card className="card-elegant">
           <CardContent className="p-12 text-center">
             <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-foreground mb-2">لا توجد لوحات</h3>
@@ -892,317 +821,154 @@ export default function Billboards() {
         </Card>
       )}
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+      {/* Maintenance Dialog */}
+      <Dialog open={isMaintenanceDialogOpen} onOpenChange={setIsMaintenanceDialogOpen}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>تعديل اللوحة</DialogTitle>
+            <DialogTitle>إدارة صيانة اللوحة</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label>الاسم (غير قابل للتعديل)</Label>
-              <Input 
-                value={editForm.Billboard_Name || ''} 
-                disabled 
-                className="bg-muted cursor-not-allowed"
-                title="اسم اللوحة غير قابل للتعديل"
-              />
-            </div>
-            <div>
-              <Label>المدينة</Label>
-              <Select value={editForm.City || ''} onValueChange={(v) => setEditForm((p: any) => ({ ...p, City: v }))}>
-                <SelectTrigger><SelectValue placeholder="اختر المدينة" /></SelectTrigger>
-                <SelectContent>
-                  {citiesList.map((c) => (<SelectItem key={c} value={c as string}>{c}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-2">
-              <Label>أقرب معلم</Label>
-              <Input value={editForm.Nearest_Landmark || ''} onChange={(e) => setEditForm((p: any) => ({ ...p, Nearest_Landmark: e.target.value }))} />
-            </div>
-            <div>
-              <Label>البلدية</Label>
-              <Select value={editForm.Municipality || ''} onValueChange={(v) => setEditForm((p: any) => ({ ...p, Municipality: v }))}>
-                <SelectTrigger><SelectValue placeholder="اختر البلدية" /></SelectTrigger>
-                <SelectContent>
-                  {municipalities.map((m) => (<SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>المنطقة</Label>
-              <Input list="district-list" value={editForm.District || ''} onChange={(e) => setEditForm((p: any) => ({ ...p, District: e.target.value }))} placeholder="اختر أو اكتب منطقة" />
-              <datalist id="district-list">
-                {districts.map((d) => (<option key={String(d)} value={String(d)} />))}
-              </datalist>
-            </div>
-            <div>
-              <Label>المقاس</Label>
-              <Select value={editForm.Size || ''} onValueChange={(v) => setEditForm((p: any) => ({ ...p, Size: v }))}>
-                <SelectTrigger><SelectValue placeholder="اختر المقاس" /></SelectTrigger>
-                <SelectContent>
-                  {sizes.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>المستوى</Label>
-              <Select value={editForm.Level || ''} onValueChange={(v) => setEditForm((p: any) => ({ ...p, Level: v }))}>
-                <SelectTrigger><SelectValue placeholder="اختر المستوى" /></SelectTrigger>
-                <SelectContent>
-                  {levels.map((lv) => (<SelectItem key={String(lv)} value={String(lv)}>{String(lv)}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Image Upload Section */}
-            <div className="sm:col-span-2">
-              <Label>صورة اللوحة</Label>
-              <div className="space-y-2">
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleImageSelect(e, true)}
-                />
-                <Input
-                  placeholder="أو أدخل رابط الصورة (اختياري)"
-                  value={editForm.Image_URL || ''}
-                  onChange={(e) => setEditForm((p: any) => ({ ...p, Image_URL: e.target.value }))}
-                />
-                {imagePreview && (
-                  <div className="w-full h-48 bg-muted rounded-lg overflow-hidden">
-                    <img
-                      src={imagePreview}
-                      alt="معاينة الصورة"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-                {editForm.image_name && (
-                  <div className="text-sm text-muted-foreground">
-                    اسم الملف: {editForm.image_name}
-                  </div>
-                )}
+          <div className="space-y-4">
+            {selectedBillboard && (
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="font-medium">{selectedBillboard.Billboard_Name || `لوحة رقم ${selectedBillboard.ID}`}</p>
+                <p className="text-sm text-muted-foreground">{selectedBillboard.Nearest_Landmark || selectedBillboard.District}</p>
               </div>
-            </div>
-
-            <div className="sm:col-span-2">
-              <div className="flex items-center gap-3">
-                <Label>لوحة شراكة</Label>
-                <input type="checkbox" checked={!!editForm.is_partnership} onChange={(e)=> setEditForm((p:any)=>({...p, is_partnership: e.target.checked}))} />
-              </div>
-            </div>
-
-            {editForm.is_partnership && (
-              <>
-                <div className="sm:col-span-2">
-                  <Label>الشركات المشاركة (فصل بالفواصل)</Label>
-                  <Input value={(Array.isArray(editForm.partner_companies)? editForm.partner_companies.join(', ') : editForm.partner_companies || '')} onChange={(e)=> setEditForm((p:any)=>({...p, partner_companies: e.target.value}))} />
-                </div>
-                <div>
-                  <Label>رأس مال اللوحة</Label>
-                  <Input type="number" value={editForm.capital || 0} onChange={(e)=> setEditForm((p:any)=>({...p, capital: Number(e.target.value)}))} />
-                </div>
-                <div>
-                  <Label>المتبقي من رأس المال</Label>
-                  <Input type="number" value={editForm.capital_remaining || editForm.capital || 0} onChange={(e)=> setEditForm((p:any)=>({...p, capital_remaining: Number(e.target.value)}))} />
-                </div>
-              </>
             )}
 
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => {
-              setEditOpen(false);
-              setImagePreview('');
-            }}>إلغاء</Button>
-            <Button onClick={saveEdit} disabled={saving}>{saving ? 'جارٍ الحفظ...' : 'حفظ'}</Button>
+            <div className="space-y-2">
+              <Label htmlFor="maintenance-status">حالة الصيانة *</Label>
+              <Select
+                value={maintenanceForm.status}
+                onValueChange={(value) => setMaintenanceForm(prev => ({ ...prev, status: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر حالة الصيانة" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="operational">تعمل بشكل طبيعي</SelectItem>
+                  <SelectItem value="maintenance">قيد الصيانة</SelectItem>
+                  <SelectItem value="repair_needed">تحتاج إصلاح</SelectItem>
+                  <SelectItem value="out_of_service">خارج الخدمة</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="maintenance-type">نوع الصيانة</Label>
+              <Select
+                value={maintenanceForm.type}
+                onValueChange={(value) => setMaintenanceForm(prev => ({ ...prev, type: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر نوع الصيانة" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="صيانة دورية">صيانة دورية</SelectItem>
+                  <SelectItem value="إصلاح">إصلاح</SelectItem>
+                  <SelectItem value="تنظيف">تنظيف</SelectItem>
+                  <SelectItem value="استبدال قطع">استبدال قطع</SelectItem>
+                  <SelectItem value="فحص">فحص</SelectItem>
+                  <SelectItem value="أخرى">أخرى</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="priority">الأولوية</Label>
+              <Select
+                value={maintenanceForm.priority}
+                onValueChange={(value) => setMaintenanceForm(prev => ({ ...prev, priority: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">منخفضة</SelectItem>
+                  <SelectItem value="normal">عادية</SelectItem>
+                  <SelectItem value="high">عالية</SelectItem>
+                  <SelectItem value="urgent">عاجلة</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">وصف المشكلة أو الصيانة</Label>
+              <Textarea
+                id="description"
+                placeholder="اكتب وصف تفصيلي..."
+                value={maintenanceForm.description}
+                onChange={(e) => setMaintenanceForm(prev => ({ ...prev, description: e.target.value }))}
+              />
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button onClick={handleMaintenanceSubmit} className="flex-1">
+                حفظ
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setIsMaintenanceDialogOpen(false)}
+                className="flex-1"
+              >
+                إلغاء
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Add Billboard Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>إضافة لوحة جديدة</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label>رقم اللوحة (تلقائي)</Label>
-              <Input 
-                type="number" 
-                value={addForm.ID || ''} 
-                disabled 
-                className="bg-muted cursor-not-allowed"
-                placeholder="يتم إنشاؤه تلقائياً" 
-              />
-            </div>
-            <div>
-              <Label>اسم اللوحة (تلقائي)</Label>
-              <Input 
-                value={addForm.Billboard_Name || ''} 
-                disabled 
-                className="bg-muted cursor-not-allowed"
-                placeholder="يتم إنشاؤه تلقائياً" 
-              />
-            </div>
-            <div>
-              <Label>المدينة</Label>
-              <Select value={addForm.City || ''} onValueChange={(v) => setAddForm((p: any) => ({ ...p, City: v }))}>
-                <SelectTrigger><SelectValue placeholder="اختر المدينة" /></SelectTrigger>
-                <SelectContent>
-                  {citiesList.map((c) => (<SelectItem key={c} value={c as string}>{c}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>البلدية * (مطلوب)</Label>
-              <Select value={addForm.Municipality || ''} onValueChange={(v) => setAddForm((p: any) => ({ ...p, Municipality: v }))}>
-                <SelectTrigger><SelectValue placeholder="اختر البلدية" /></SelectTrigger>
-                <SelectContent>
-                  {municipalities.map((m) => (<SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-2">
-              <Label>أقرب معلم</Label>
-              <Input value={addForm.Nearest_Landmark || ''} onChange={(e) => setAddForm((p: any) => ({ ...p, Nearest_Landmark: e.target.value }))} />
-            </div>
-            <div>
-              <Label>المقاس * (مطلوب)</Label>
-              <div className="space-y-2">
-                <Select 
-                  value={addForm.Size || ''} 
-                  onValueChange={(v) => {
-                    if (v === '__add_new__') {
-                      const newSize = prompt('أدخل المقاس الجديد:');
-                      if (newSize && newSize.trim()) {
-                        addSizeIfNew(newSize.trim());
-                        setAddForm((p: any) => ({ ...p, Size: newSize.trim() }));
-                      }
-                    } else {
-                      setAddForm((p: any) => ({ ...p, Size: v }));
-                    }
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="اختر المقاس أو أضف جديد" /></SelectTrigger>
-                  <SelectContent>
-                    {sizes.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
-                    <SelectItem value="__add_new__" className="text-blue-600 font-medium">
-                      + إضافة مقاس جديد
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label>المستوى * (مطلوب)</Label>
-              <div className="space-y-2">
-                <Select 
-                  value={addForm.Level || ''} 
-                  onValueChange={(v) => {
-                    if (v === '__add_new__') {
-                      const newLevel = prompt('أدخل المستوى الجديد:');
-                      if (newLevel && newLevel.trim()) {
-                        addLevelIfNew(newLevel.trim());
-                        setAddForm((p: any) => ({ ...p, Level: newLevel.trim() }));
-                      }
-                    } else {
-                      setAddForm((p: any) => ({ ...p, Level: v }));
-                    }
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="اختر المستوى أو أضف جديد" /></SelectTrigger>
-                  <SelectContent>
-                    {levels.map((lv) => (<SelectItem key={String(lv)} value={String(lv)}>{String(lv)}</SelectItem>))}
-                    <SelectItem value="__add_new__" className="text-blue-600 font-medium">
-                      + إضافة مستوى جديد
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="sm:col-span-2">
-              <Label>إحداثيات GPS</Label>
-              <Input value={addForm.GPS_Coordinates || ''} onChange={(e) => setAddForm((p: any) => ({ ...p, GPS_Coordinates: e.target.value }))} placeholder="lat, lng" />
-            </div>
-            
-            {/* Image Upload Section for Add */}
-            <div className="sm:col-span-2">
-              <Label>صورة اللوحة</Label>
-              <div className="space-y-2">
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleImageSelect(e, false)}
-                />
-                <Input
-                  placeholder="أو أدخل رابط الصورة (اختياري)"
-                  value={addForm.Image_URL || ''}
-                  onChange={(e) => setAddForm((p: any) => ({ ...p, Image_URL: e.target.value }))}
-                />
-                {imagePreview && (
-                  <div className="w-full h-48 bg-muted rounded-lg overflow-hidden">
-                    <img
-                      src={imagePreview}
-                      alt="معاينة الصورة"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-                {addForm.image_name && (
-                  <div className="text-sm text-muted-foreground">
-                    اسم الملف: {addForm.image_name}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="sm:col-span-2">
-              <div className="flex items-center gap-3">
-                <Label>لوحة شراكة</Label>
-                <input type="checkbox" checked={!!addForm.is_partnership} onChange={(e)=> setAddForm((p:any)=>({...p, is_partnership: e.target.checked}))} />
-              </div>
-            </div>
-
-            {addForm.is_partnership && (
-              <>
-                <div className="sm:col-span-2">
-                  <Label>الشركات المشاركة (فصل بالفواصل)</Label>
-                  <Input value={(Array.isArray(addForm.partner_companies)? addForm.partner_companies.join(', ') : addForm.partner_companies || '')} onChange={(e)=> setAddForm((p:any)=>({...p, partner_companies: e.target.value}))} />
-                </div>
-                <div>
-                  <Label>رأس مال اللوحة</Label>
-                  <Input type="number" value={addForm.capital || 0} onChange={(e)=> setAddForm((p:any)=>({...p, capital: Number(e.target.value)}))} />
-                </div>
-                <div>
-                  <Label>المتبقي من رأس المال</Label>
-                  <Input type="number" value={addForm.capital_remaining || addForm.capital || 0} onChange={(e)=> setAddForm((p:any)=>({...p, capital_remaining: Number(e.target.value)}))} />
-                </div>
-              </>
-            )}
-
-            {/* Display generated name preview */}
-            {addForm.Municipality && addForm.Level && addForm.Size && (
-              <div className="sm:col-span-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <Label className="text-blue-800 font-medium">الاسم المقترح:</Label>
-              <div className="text-blue-600 font-mono text-lg mt-1">
-                {generateBillboardName(addForm.Municipality, addForm.ID)}
-              </div>
-            </div>
-            )}
-
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => {
-              setAddOpen(false);
-              setImagePreview('');
-            }}>إلغاء</Button>
-            <Button onClick={addBillboard} disabled={adding}>{adding ? 'جاري الإضافة...' : 'إضافة'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Dialogs */}
+      <BillboardAddDialog 
+        {...billboardForm} 
+        {...billboardData} 
+        {...billboardActions}
+        municipalities={municipalities}
+        sizes={sizes}
+        levels={levels}
+        citiesList={citiesList}
+        faces={faces}
+        billboardTypes={billboardTypes}
+        setMunicipalities={setMunicipalities}
+        setSizes={setSizes}
+        setLevels={setLevels}
+        setBillboardTypes={setBillboardTypes}
+        setDbMunicipalities={setDbMunicipalities}
+        setDbSizes={setDbSizes}
+        loadBillboards={loadBillboards}
+      />
+      
+      <BillboardEditDialog 
+        {...billboardForm} 
+        {...billboardData} 
+        {...billboardActions}
+        municipalities={municipalities}
+        sizes={sizes}
+        levels={levels}
+        citiesList={citiesList}
+        faces={faces}
+        billboardTypes={billboardTypes}
+        setMunicipalities={setMunicipalities}
+        setDbMunicipalities={setDbMunicipalities}
+        loadBillboards={loadBillboards}
+      />
+      
+      <ContractManagementDialog 
+        {...billboardContract}
+        loadBillboards={loadBillboards}
+      />
+      
+      <PrintFiltersDialog 
+        open={printFiltersOpen}
+        onOpenChange={setPrintFiltersOpen}
+        filters={printFilters}
+        setFilters={setPrintFilters}
+        billboards={billboards}
+        isContractExpired={isContractExpired}
+        billboardMunicipalities={dbMunicipalities}
+        cities={citiesList}
+        billboardSizes={dbSizes}
+        uniqueAdTypes={dbAdTypes}
+      />
     </div>
   );
 }

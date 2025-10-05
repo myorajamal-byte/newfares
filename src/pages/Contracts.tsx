@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/sonner';
-import { Plus, Eye, Edit, Trash2, Calendar, User, DollarSign, Search, Filter, Building, AlertCircle, Clock, CheckCircle, Printer } from 'lucide-react';
+import { Plus, Eye, Edit, Trash2, Calendar, User, DollarSign, Search, Filter, Building, AlertCircle, Clock, CheckCircle, Printer, RefreshCcw, Hammer, Wrench, Percent, PaintBucket } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   createContract,
@@ -24,7 +24,6 @@ import {
   ContractCreate
 } from '@/services/contractService';
 import { Billboard } from '@/types';
-import { supabase } from '@/integrations/supabase/client';
 import { ContractPDFDialog } from '@/components/Contract';
 
 export default function Contracts() {
@@ -42,11 +41,6 @@ export default function Contracts() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [customerFilter, setCustomerFilter] = useState<string>('all');
 
-  const [customersList, setCustomersList] = useState<{id:string; name:string}[]>([]);
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [assignContractNumber, setAssignContractNumber] = useState<string | null>(null);
-  const [assignCustomerId, setAssignCustomerId] = useState<string | null>(null);
-
   const [formData, setFormData] = useState<ContractCreate>({
     customer_name: '',
     ad_type: '',
@@ -56,6 +50,12 @@ export default function Contracts() {
     billboard_ids: []
   });
   const [pricingCategory, setPricingCategory] = useState<CustomerType>('عادي');
+
+  // Renew state
+  const [renewOpen, setRenewOpen] = useState(false);
+  const [renewSource, setRenewSource] = useState<Contract | null>(null);
+  const [renewStart, setRenewStart] = useState<string>('');
+  const [renewEnd, setRenewEnd] = useState<string>('');
   const [durationMonths, setDurationMonths] = useState<number>(3);
 
   const [bbSearch, setBbSearch] = useState('');
@@ -67,13 +67,6 @@ export default function Contracts() {
       const billboardsData = await getAvailableBillboards();
       setContracts(contractsData as Contract[]);
       setAvailableBillboards(billboardsData || []);
-      // load customers list
-      try {
-        const { data: cdata, error: cErr } = await supabase.from('customers').select('id,name').order('name', { ascending: true });
-        if (!cErr && Array.isArray(cdata)) setCustomersList(cdata as any);
-      } catch (e) {
-        console.warn('failed to load customers list', e);
-      }
     } catch (error) {
       console.error('خطأ في تحميل البيانات:', error);
       toast.error('فشل في تحميل البيانات');
@@ -113,7 +106,7 @@ export default function Contracts() {
       }
 
       await createContract(formData);
-      toast.success('تم إنشاء العقد بنجا��');
+      toast.success('تم إنشاء العقد بنجاح');
       setCreateOpen(false);
       setFormData({
         customer_name: '',
@@ -154,31 +147,6 @@ export default function Contracts() {
     }
   };
 
-  const openAssignDialog = (contractNumber: string, currentCustomerId?: string | null) => {
-    setAssignContractNumber(contractNumber);
-    setAssignCustomerId(currentCustomerId ?? null);
-    setAssignOpen(true);
-  };
-
-  const saveAssign = async () => {
-    if (!assignContractNumber || !assignCustomerId) {
-      toast.error('اختر زبونًا ثم احفظ');
-      return;
-    }
-    const customer = customersList.find(c => c.id === assignCustomerId);
-    try {
-      await updateContract(assignContractNumber, { customer_id: assignCustomerId, 'Customer Name': customer?.name || '' });
-      toast.success('تم تحديث العميل للعقد');
-      setAssignOpen(false);
-      setAssignContractNumber(null);
-      setAssignCustomerId(null);
-      loadData();
-    } catch (e) {
-      console.error(e);
-      toast.error('فشل تحديث العقد');
-    }
-  };
-
   const handlePrintContract = async (contract: Contract) => {
     try {
       const contractWithBillboards = await getContractWithBillboards(String(contract.id));
@@ -187,6 +155,120 @@ export default function Contracts() {
     } catch (error) {
       console.error('خطأ في جلب تفاصيل العقد للطباعة:', error);
       toast.error('فشل في جلب تفاصيل العقد');
+    }
+  };
+
+  const handlePrintInstallationNew = async (contract: Contract) => {
+    try {
+      const data = await getContractWithBillboards(String(contract.id));
+      const boards: any[] = Array.isArray((data as any).billboards) ? (data as any).billboards : [];
+      if (!boards.length) { toast.warning('لا توجد لوحات للطباعة'); return; }
+
+      const norm = (b: any) => {
+        const id = String(b.ID ?? b.id ?? '');
+        const name = String(b.Billboard_Name ?? b.name ?? id);
+        const image = String(b.image ?? b.Image ?? b.billboard_image ?? b.Image_URL ?? b['@IMAGE'] ?? b.image_url ?? b.imageUrl ?? '');
+        const municipality = String(b.Municipality ?? b.municipality ?? b.City_Council ?? b.city_council ?? '');
+        const district = String(b.District ?? b.district ?? b.Area ?? b.area ?? '');
+        const landmark = String(b.Nearest_Landmark ?? b.nearest_landmark ?? b.location ?? b.Location ?? '');
+        const size = String(b.Size ?? b.size ?? b['Billboard size'] ?? '');
+        const faces = String(b.Faces ?? b.faces ?? b.Number_of_Faces ?? b['Number of Faces'] ?? '');
+        let coords: string = String(b.GPS_Coordinates ?? b.coords ?? b.coordinates ?? b.GPS ?? '');
+        if (!coords || coords === 'undefined' || coords === 'null') {
+          const lat = b.Latitude ?? b.lat ?? b.latitude; const lng = b.Longitude ?? b.lng ?? b.longitude; if (lat != null && lng != null) coords = `${lat},${lng}`;
+        }
+        const mapLink = coords ? `https://www.google.com/maps?q=${encodeURIComponent(coords)}` : '';
+        return { id, name, image, municipality, district, landmark, size, faces, mapLink };
+      };
+
+      const normalized = boards.map(norm);
+      const START_Y = 63.53;
+      const ROW_H = 13.818;
+      const PAGE_H = 297;
+      const ROWS_PER_PAGE = Math.max(1, Math.floor((PAGE_H - START_Y) / ROW_H));
+
+      const tablePagesHtml = normalized.length
+        ? normalized
+            .reduce((acc: any[][], r, i) => { const p = Math.floor(i / ROWS_PER_PAGE); (acc[p] ||= []).push(r); return acc; }, [])
+            .map((pageRows) => `
+              <div class="template-container page">
+                <img src="/bgc2.svg" alt="خلفية جدول اللوحات" class="template-image" onerror="console.warn('Failed to load bgc2.svg')" />
+                <div class="table-area">
+                  <table class="btable" dir="rtl">
+                    <colgroup>
+                      <col style="width:22mm" />
+                      <col style="width:22mm" />
+                      <col style="width:22mm" />
+                      <col style="width:22mm" />
+                      <col style="width:50mm" />
+                      <col style="width:18mm" />
+                      <col style="width:18mm" />
+                      <col style="width:20mm" />
+                    </colgroup>
+                    <tbody>
+                      ${pageRows
+                        .map(
+                          (r) => `
+                          <tr>
+                            <td class="c-name">${r.name || r.id}</td>
+                            <td class="c-img">${r.image ? `<img src="${r.image}" alt="صورة اللوحة" onerror="this.style.display='none'" />` : ''}</td>
+                            <td>${r.municipality}</td>
+                            <td>${r.district}</td>
+                            <td>${r.landmark}</td>
+                            <td>${r.size}</td>
+                            <td>${r.faces}</td>
+                            <td>${r.mapLink ? `<a href="${r.mapLink}" target="_blank" rel="noopener">اضغط هنا</a>` : ''}</td>
+                          </tr>`
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            `)
+            .join('')
+        : '';
+
+      const html = `<!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <title>كشف تركيب - العقد ${String(contract.id)}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap');
+            @font-face { font-family: 'Doran'; src: url('/Doran-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; font-display: swap; }
+            @font-face { font-family: 'Doran'; src: url('/Doran-Bold.otf') format('opentype'); font-weight: 700; font-style: normal; font-display: swap; }
+            * { margin: 0 !important; padding: 0 !important; box-sizing: border-box; }
+            html, body { width: 100% !important; height: 100% !important; overflow: hidden; font-family: 'Noto Sans Arabic','Doran','Arial Unicode MS',Arial,sans-serif; direction: rtl; text-align: right; background: #fff; color: #000; }
+            .template-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; display: block; }
+            .template-image { position: absolute; inset: 0; width: 100% !important; height: 100% !important; object-fit: cover; object-position: center; z-index: 1; display: block; }
+            .page { page-break-after: always; page-break-inside: avoid; }
+            .table-area { position: absolute; top: 63.53mm; left: 12.8765mm; right: 12.8765mm; z-index: 20; }
+            .btable { width: 100%; border-collapse: collapse; border-spacing: 0; font-size: 8px; font-family: 'Doran','Noto Sans Arabic','Arial Unicode MS',Arial,sans-serif; table-layout: fixed; border: 0.2mm solid #000; }
+            .btable tr { height: 13.818mm; }
+            .btable td { border: 0.2mm solid #000; padding: 0 1mm; vertical-align: middle; text-align: center; background: transparent; color: #000; white-space: normal; word-break: break-word; overflow: hidden; }
+            .c-img img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
+            @media print { html, body { width: 210mm !important; min-height: 297mm !important; height: auto !important; margin:0 !important; padding:0 !important; overflow: visible !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .template-container { width: 210mm !important; height: 297mm !important; position: relative !important; }
+              .template-image { width: 210mm !important; height: 297mm !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              @page { size: A4; margin: 0 !important; padding: 0 !important; } .controls{display:none!important}
+            }
+            .controls{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99}
+            .controls button{padding:8px 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;cursor:pointer}
+          </style>
+        </head>
+        <body>
+          ${tablePagesHtml}
+          <div class="controls"><button onclick="window.print()">طباعة</button></div>
+        </body>
+        </html>`;
+
+      const w = window.open('', '_blank');
+      if (!w) { toast.error('فشل فتح نافذة الطباعة'); return; }
+      w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 600);
+    } catch (e) {
+      console.error(e);
+      toast.error('فشل طباعة التركيب');
     }
   };
 
@@ -279,6 +361,23 @@ export default function Contracts() {
     }).length
   };
 
+  // ✅ FIXED: حساب إجمالي التركيب وتكلفة الطباعة ورسوم التشغيل من القيم المحفوظة مباشرة
+  const totalInstallationCost = contracts.reduce((sum, contract) => {
+    const installationCost = Number((contract as any).installation_cost || (contract as any)['Installation Cost'] || 0);
+    return sum + installationCost;
+  }, 0);
+
+  const totalPrintCost = contracts.reduce((sum, contract) => {
+    // ✅ NEW: حساب تكلفة الطباعة الإجمالية
+    const printCost = Number((contract as any).print_cost || (contract as any)['Print Cost'] || 0);
+    return sum + printCost;
+  }, 0);
+
+  const totalOperatingFees = contracts.reduce((sum, contract) => {
+    const operatingFee = Number((contract as any).fee || (contract as any)['Operating Fee'] || 0);
+    return sum + operatingFee;
+  }, 0);
+
   const uniqueCustomers = [...new Set(contracts.map(c => c.customer_name))].filter(Boolean);
 
   const filteredAvailable = availableBillboards.filter((b) => {
@@ -315,7 +414,7 @@ export default function Contracts() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">جاري تحميل العقود...</p>
+          <p className="text-muted">جاري تحميل العقود...</p>
         </div>
       </div>
     );
@@ -326,192 +425,93 @@ export default function Contracts() {
       {/* العنوان والأزرار */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">إدارة العقود</h1>
-          <p className="text-muted-foreground">إنشاء وإدارة عقود الإيجار مع اللوحات الإعلانية</p>
+          <h1 className="section-header">إدارة العقود</h1>
+          <p className="text-muted">إنشاء وإدارة عقود الإيجار مع اللوحات الإعلانية</p>
         </div>
         <div className="flex gap-2">
           <Button
-            className="bg-gradient-primary text-white shadow-elegant hover:shadow-glow transition-smooth"
+            className="btn-primary"
             onClick={() => navigate('/admin/contracts/new')}
           >
             <Plus className="h-4 w-4 ml-2" />
             إنشاء عقد جديد
           </Button>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              try {
-                // جلب جميع اللوحات
-                const { fetchAllBillboards } = await import('@/services/supabaseService');
-                const rows: any[] = await fetchAllBillboards();
-                if (!rows || rows.length === 0) {
-                  toast.warning('لا توجد لوحات للطباعة');
-                  return;
-                }
-
-                // تطبيع الحقول
-                const norm = (b: any) => {
-                  const id = String(b.ID ?? b.id ?? '');
-                  const image = String(b.image ?? b.Image ?? b.billboard_image ?? b.Image_URL ?? b['@IMAGE'] ?? b.image_url ?? b.imageUrl ?? '');
-                  const municipality = String(b.Municipality ?? b.municipality ?? '');
-                  const district = String(b.District ?? b.district ?? '');
-                  const landmark = String(b.Nearest_Landmark ?? b.nearest_landmark ?? b.location ?? '');
-                  const size = String(b.Size ?? b.size ?? '');
-                  const faces = String(b.Faces ?? b.faces ?? b.Number_of_Faces ?? '');
-                  const priceVal = b.Price ?? b.rent ?? b.Rent_Price ?? b.price ?? b.rent_cost ?? b['Total Rent'];
-                  const priceNum = typeof priceVal === 'number' ? priceVal : Number(String(priceVal || '').replace(/[^\d.]/g, '')) || 0;
-                  const price = priceNum ? `${priceNum.toLocaleString('ar-LY')} د.ل` : '';
-                  let coords: string = String(b.GPS_Coordinates ?? b.coords ?? b.coordinates ?? b.GPS ?? '');
-                  if (!coords || coords === 'undefined' || coords === 'null') {
-                    const lat = b.Latitude ?? b.lat ?? b.latitude;
-                    const lng = b.Longitude ?? b.lng ?? b.longitude;
-                    if (lat != null && lng != null) coords = `${lat},${lng}`;
-                  }
-                  const mapLink = coords ? `https://www.google.com/maps?q=${encodeURIComponent(coords)}` : '';
-                  return { id, image, municipality, district, landmark, size, faces, price, priceNum, mapLink };
-                };
-
-                const normalized = rows.map(norm);
-                const total = normalized.reduce((s, r) => s + (r.priceNum || 0), 0);
-                const ROWS_PER_PAGE = 12;
-                const pages = normalized.reduce((acc: any[][], r, i) => {
-                  const p = Math.floor(i / ROWS_PER_PAGE); (acc[p] ||= []).push(r); return acc;
-                }, [] as any[][]);
-
-                const tablePagesHtml = pages.map((pageRows, idx) => `
-                  <div class="template-container page">
-                    <img src="/bgc2.jpg" alt="خلفية جدول اللوحات" class="template-image" />
-                    <div class="table-area">
-                      <table class="btable" dir="rtl">
-                        <colgroup>
-                          <col style="width:8%" />
-                          <col style="width:14%" />
-                          <col style="width:12%" />
-                          <col style="width:12%" />
-                          <col style="width:18%" />
-                          <col style="width:10%" />
-                          <col style="width:8%" />
-                          <col style="width:10%" />
-                          <col style="width:8%" />
-                        </colgroup>
-                        <tbody>
-                          ${pageRows.map((r:any) => `
-                            <tr>
-                              <td class="c-num">${r.id}</td>
-                              <td class="c-img">${r.image ? `<img src="${r.image}" alt="صورة اللوحة" />` : ''}</td>
-                              <td>${r.municipality}</td>
-                              <td>${r.district}</td>
-                              <td>${r.landmark}</td>
-                              <td>${r.size}</td>
-                              <td>${r.faces}</td>
-                              <td>${r.price}</td>
-                              <td>${r.mapLink ? `<a href="${r.mapLink}" target="_blank" rel="noopener">اضغط هنا</a>` : ''}</td>
-                            </tr>`).join('')}
-                        </tbody>
-                      </table>
-                      ${idx === pages.length - 1 ? `<div class="summary">الإجمالي: ${total.toLocaleString('ar-LY')} د.ل</div>` : ''}
-                    </div>
-                  </div>
-                `).join('');
-
-                const html = `
-                  <!DOCTYPE html>
-                  <html dir="rtl" lang="ar">
-                  <head>
-                    <meta charset="UTF-8" />
-                    <title>عرض عقد - جميع اللوحات</title>
-                    <style>
-                      *{margin:0;padding:0;box-sizing:border-box}
-                      body{font-family:'Noto Sans Arabic',Arial,sans-serif;background:#fff;color:#000}
-                      .template-container{position:relative;width:210mm;height:297mm;page-break-after:always;overflow:hidden}
-                      .template-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
-                      .table-area{position:absolute;right:20mm;left:20mm;top:80mm;bottom:32mm;z-index:20}
-                      .btable{width:100%;border-collapse:collapse;font-size:12pt}
-                      .btable td{border:1px solid #000;padding:4pt 3pt;vertical-align:middle}
-                      .c-img img{width:38mm;height:22mm;object-fit:cover;display:block;margin:0 auto}
-                      .c-num{text-align:center;font-weight:700}
-                      .btable a{color:#004aad;text-decoration:none}
-                      .summary{position:absolute;left:20mm;bottom:12mm;font-size:14pt;font-weight:700}
-                      @page{size:A4;margin:0}
-                      @media print{.controls{display:none}}
-                      .controls{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99}
-                      .controls button{padding:8px 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;cursor:pointer}
-                    </style>
-                  </head>
-                  <body>
-                    ${tablePagesHtml}
-                    <div class="controls"><button onclick="window.print()">طباعة</button></div>
-                  </body>
-                  </html>`;
-
-                const w = window.open('', '_blank');
-                if (!w) { toast.error('فشل فتح نافذة الطباعة'); return; }
-                w.document.write(html); w.document.close(); w.focus();
-                setTimeout(() => w.print(), 600);
-              } catch (e) {
-                console.error(e);
-                toast.error('فشل في عرض العقد');
-              }
-            }}
-          >
-            عرض عقد
-          </Button>
         </div>
       </div>
 
       {/* إحصائيات سريعة */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-card border-0 shadow-card">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <Card className="card-elegant">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <Calendar className="h-6 w-6 text-primary" />
-              </div>
+              <Calendar className="h-6 w-6 text-primary" />
               <div>
-                <p className="text-sm text-muted-foreground">إجمالي العقود</p>
-                <p className="text-2xl font-bold text-foreground">{contractStats.total}</p>
+                <p className="text-sm text-muted">إجمالي العقود</p>
+                <p className="text-2xl font-bold">{contractStats.total}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-card border-0 shadow-card">
+        <Card className="card-elegant">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-success/10 rounded-lg">
-                <CheckCircle className="h-6 w-6 text-success" />
-              </div>
+              <CheckCircle className="h-6 w-6 text-green" />
               <div>
-                <p className="text-sm text-muted-foreground">عقود نشطة</p>
-                <p className="text-2xl font-bold text-success">{contractStats.active}</p>
+                <p className="text-sm text-muted">عقود نشطة</p>
+                <p className="text-2xl font-bold text-green">{contractStats.active}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-card border-0 shadow-card">
+        <Card className="card-elegant">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-warning/10 rounded-lg">
-                <Clock className="h-6 w-6 text-warning" />
-              </div>
+              <Clock className="h-6 w-6 text-yellow" />
               <div>
-                <p className="text-sm text-muted-foreground">قريبة الانتهاء</p>
-                <p className="text-2xl font-bold text-warning">{contractStats.expiring}</p>
+                <p className="text-sm text-muted">قريبة الانتهاء</p>
+                <p className="text-2xl font-bold text-yellow">{contractStats.expiring}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-card border-0 shadow-card">
+        <Card className="card-elegant">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-destructive/10 rounded-lg">
-                <AlertCircle className="h-6 w-6 text-destructive" />
-              </div>
+              <AlertCircle className="h-6 w-6 text-red" />
               <div>
-                <p className="text-sm text-muted-foreground">عقود منتهية</p>
-                <p className="text-2xl font-bold text-destructive">{contractStats.expired}</p>
+                <p className="text-sm text-muted">عقود منتهية</p>
+                <p className="text-2xl font-bold text-red">{contractStats.expired}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="card-elegant">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <Wrench className="h-6 w-6 text-orange" />
+              <div>
+                <p className="text-sm text-muted">إجمالي التركيب</p>
+                <p className="text-2xl font-bold text-orange">
+                  {totalInstallationCost.toLocaleString('ar-LY')} د.ل
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="card-elegant">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3">
+              <PaintBucket className="h-6 w-6 text-purple" />
+              <div>
+                <p className="text-sm text-muted">إجمالي الطباعة</p>
+                <p className="text-2xl font-bold text-purple">
+                  {totalPrintCost.toLocaleString('ar-LY')} د.ل
+                </p>
               </div>
             </div>
           </CardContent>
@@ -519,7 +519,7 @@ export default function Contracts() {
       </div>
 
       {/* البحث والفلاتر */}
-      <Card className="bg-gradient-card border-0 shadow-card">
+      <Card className="card-elegant">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="h-5 w-5 text-primary" />
@@ -529,9 +529,9 @@ export default function Contracts() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="relative">
-              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted" />
               <Input
-                placeholder="ابحث في العق��د..."
+                placeholder="ابحث في العقود..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pr-10"
@@ -569,7 +569,7 @@ export default function Contracts() {
       </Card>
 
       {/* جدول العقود */}
-      <Card className="bg-gradient-card border-0 shadow-card">
+      <Card className="card-elegant">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-primary" />
@@ -581,95 +581,174 @@ export default function Contracts() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>رقم العقد</TableHead>
                   <TableHead>اسم الزبون</TableHead>
                   <TableHead>نوع الإعلان</TableHead>
                   <TableHead>تاريخ البداية</TableHead>
                   <TableHead>تاريخ النهاية</TableHead>
-                  <TableHead>التكلفة</TableHead>
+                  <TableHead>الإجمالي</TableHead>
+                  <TableHead>التركيب</TableHead>
+                  <TableHead>الطباعة</TableHead>
+                  <TableHead>رسوم التشغيل</TableHead>
+                  <TableHead>المجموع الكلي</TableHead>
                   <TableHead>الحالة</TableHead>
                   <TableHead>الإجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredContracts.map((contract) => (
-                  <TableRow key={contract.id} className="hover:bg-card/50 transition-colors">
-                    <TableCell className="font-medium">{contract.customer_name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="gap-1">
-                        <Building className="h-3 w-3" />
-                        {(contract as any)['Ad Type'] || 'غير محدد'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{contract.start_date ? new Date(contract.start_date).toLocaleDateString('ar') : '—'}</TableCell>
-                    <TableCell>{contract.end_date ? new Date(contract.end_date).toLocaleDateString('ar') : '—'}</TableCell>
-                    <TableCell className="font-semibold text-primary">
-                      {(contract.rent_cost || 0).toLocaleString()} د.ل
-                    </TableCell>
-                    <TableCell>{getContractStatus(contract)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/admin/contracts/view?contract=${String(contract.id)}`)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/admin/contracts/edit?contract=${String(contract.id)}`)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => openAssignDialog(String((contract as any).Contract_Number ?? contract.id), (contract as any).customer_id ?? null)}
-                          className="h-8 px-2"
-                        >
-                          تعيين زبون
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDeleteContract(String(contract.id))}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handlePrintContract(contract)}
-                          className="h-8 px-2 gap-1"
-                        >
-                          <Printer className="h-4 w-4" />
-                          طباعة
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredContracts.map((contract) => {
+                  // ✅ عرض القيم المحفوظة في قاعدة البيانات مباشرة بدون أي حسابات أو تعديلات
+                  const totalRent = Number(contract.rent_cost || (contract as any)['Total Rent'] || 0);
+                  const installationCost = Number((contract as any).installation_cost || (contract as any)['Installation Cost'] || 0);
+                  const printCost = Number((contract as any).print_cost || (contract as any)['Print Cost'] || 0);
+                  const operatingFee = Number((contract as any).fee || (contract as any)['Operating Fee'] || 0);
+                  const totalCost = Number((contract as any).total_cost || (contract as any)['Total'] || 0);
+                  
+                  // ✅ المجموع الكلي: إما من قاعدة البيانات أو مجموع القيم المحفوظة
+                  const finalTotalCost = totalCost > 0 ? totalCost : (totalRent + installationCost + printCost + operatingFee);
+                  
+                  return (
+                    <TableRow key={contract.id} className="card-hover">
+                      <TableCell className="font-semibold">{String((contract as any).Contract_Number ?? (contract as any)['Contract Number'] ?? contract.id)}</TableCell>
+                      <TableCell className="font-medium">{contract.customer_name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="gap-1">
+                          <Building className="h-3 w-3" />
+                          {(contract as any)['Ad Type'] || 'غير محدد'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{contract.start_date ? new Date(contract.start_date).toLocaleDateString('ar') : '—'}</TableCell>
+                      <TableCell>{contract.end_date ? new Date(contract.end_date).toLocaleDateString('ar') : '—'}</TableCell>
+                      <TableCell>
+                        <div className="font-semibold text-green">
+                          {totalRent > 0 ? `${totalRent.toLocaleString('ar-LY')} د.ل` : '—'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {installationCost > 0 ? (
+                          <div className="font-semibold text-orange flex items-center gap-1">
+                            <Wrench className="h-3 w-3" />
+                            {installationCost.toLocaleString('ar-LY')} د.ل
+                          </div>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {printCost > 0 ? (
+                          <div className="font-semibold text-purple flex items-center gap-1">
+                            <PaintBucket className="h-3 w-3" />
+                            {printCost.toLocaleString('ar-LY')} د.ل
+                          </div>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {operatingFee > 0 ? (
+                          <div className="font-semibold text-blue flex items-center gap-1">
+                            <Percent className="h-3 w-3" />
+                            {operatingFee.toLocaleString('ar-LY')} د.ل
+                          </div>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-bold text-primary">
+                        {finalTotalCost > 0 ? `${finalTotalCost.toLocaleString('ar-LY')} د.ل` : '—'}
+                      </TableCell>
+                      <TableCell>{getContractStatus(contract)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // Use contract ID directly for navigation - matching ContractView useParams
+                              const contractId = String(contract.id);
+                              navigate(`/admin/contracts/view/${contractId}`);
+                            }}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => navigate(`/admin/contracts/edit?contract=${String(contract.id)}`)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDeleteContract(String(contract.id))}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handlePrintContract(contract)}
+                            className="h-8 px-2 gap-1"
+                          >
+                            <Printer className="h-4 w-4" />
+                            طباعة
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handlePrintInstallationNew(contract)}
+                            className="h-8 px-2 gap-1"
+                            title="طباعة تركيب"
+                          >
+                            <Hammer className="h-4 w-4" />
+                            تركيب
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const s = contract.start_date || (contract as any)['Contract Date'] || '';
+                              const e = contract.end_date || (contract as any)['End Date'] || '';
+                              let months = 1;
+                              try {
+                                if (s && e) { const sd = new Date(s); const ed = new Date(e); const diffDays = Math.max(1, Math.ceil(Math.abs(ed.getTime() - sd.getTime())/86400000)); months = Math.max(1, Math.round(diffDays/30)); }
+                              } catch {}
+                              const start = new Date();
+                              const end = new Date(start); end.setMonth(end.getMonth() + months);
+                              setRenewSource(contract); setRenewStart(start.toISOString().slice(0,10)); setRenewEnd(end.toISOString().slice(0,10)); setRenewOpen(true);
+                            }}
+                            className="h-8 px-2 gap-1"
+                            title="تجديد العقد بنفس اللوحات"
+                          >
+                            <RefreshCcw className="h-4 w-4" />
+                            تجديد
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
           
           {filteredContracts.length === 0 && contracts.length > 0 && (
             <div className="text-center py-8">
-              <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">لا توجد نتائج</h3>
-              <p className="text-muted-foreground">لم يتم العثور على عقود تطابق معايير البحث</p>
+              <Search className="h-12 w-12 text-muted mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">لا توجد نتائج</h3>
+              <p className="text-muted">لم يتم العثور على عقود تطابق معايير البحث</p>
             </div>
           )}
 
           {contracts.length === 0 && (
             <div className="text-center py-8">
-              <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">لا توجد عقود</h3>
-              <p className="text-muted-foreground">ابدأ بإنشاء عقد جديد</p>
+              <Calendar className="h-12 w-12 text-muted mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">لا توجد عقود</h3>
+              <p className="text-muted">ابدأ بإنشاء عقد جديد</p>
             </div>
           )}
         </CardContent>
@@ -710,9 +789,12 @@ export default function Contracts() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      <p><strong>تار  خ البداية:</strong> {selectedContract.start_date ? new Date(selectedContract.start_date).toLocaleDateString('ar') : '—'}</p>
+                      <p><strong>تاريخ البداية:</strong> {selectedContract.start_date ? new Date(selectedContract.start_date).toLocaleDateString('ar') : '—'}</p>
                       <p><strong>تاريخ النهاية:</strong> {selectedContract.end_date ? new Date(selectedContract.end_date).toLocaleDateString('ar') : '—'}</p>
-                      <p><strong>التكلفة الإجمالية:</strong> {(selectedContract.rent_cost || 0).toLocaleString()} د.ل</p>
+                      <p><strong>الإيجار:</strong> {(selectedContract.rent_cost || 0).toLocaleString()} د.ل</p>
+                      <p><strong>التركيب:</strong> {(selectedContract.installation_cost || 0).toLocaleString()} د.ل</p>
+                      <p><strong>الطباعة:</strong> {(selectedContract.print_cost || 0).toLocaleString()} د.ل</p>
+                      <p><strong>الإجمالي:</strong> {(selectedContract.total_cost || selectedContract.rent_cost || 0).toLocaleString()} د.ل</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -731,11 +813,11 @@ export default function Contracts() {
                           <CardContent className="p-4 flex items-center justify-between gap-3">
                             <div>
                               <h4 className="font-semibold">{billboard.Billboard_Name || billboard.name}</h4>
-                              <p className="text-sm text-muted-foreground">{billboard.Nearest_Landmark || billboard.location}</p>
+                              <p className="text-sm text-muted">{billboard.Nearest_Landmark || billboard.location}</p>
                               <p className="text-sm">الحجم: {billboard.Size || billboard.size}</p>
                               <p className="text-sm">المدينة: {billboard.City || billboard.city}</p>
                             </div>
-                            <div className="text-xs text-muted-foreground">ضمن العقد</div>
+                            <div className="text-xs text-muted">ضمن العقد</div>
                           </CardContent>
                         </Card>
                       ))}
@@ -743,34 +825,8 @@ export default function Contracts() {
                   </CardContent>
                 </Card>
               )}
-
-              {null}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Assign customer dialog */}
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>تعيين زبون للعقد {assignContractNumber}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 p-2">
-            <Select value={assignCustomerId || '__none'} onValueChange={(v) => setAssignCustomerId(v === '__none' ? null : v)}>
-              <SelectTrigger><SelectValue placeholder="اختر زبون" /></SelectTrigger>
-              <SelectContent className="max-h-60">
-                <SelectItem value="__none">اختيار</SelectItem>
-                {customersList.map(c => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setAssignOpen(false); setAssignCustomerId(null); setAssignContractNumber(null); }}>إلغاء</Button>
-              <Button onClick={saveAssign}>حفظ</Button>
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
 
@@ -780,6 +836,43 @@ export default function Contracts() {
         onOpenChange={setPdfOpen}
         contract={selectedContractForPDF}
       />
+
+      {/* Renew Dialog */}
+      <Dialog open={renewOpen} onOpenChange={setRenewOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>تجديد العقد #{String(renewSource?.id || '')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label>تاريخ البداية الجديد</Label>
+                <Input type="date" value={renewStart} onChange={(e) => setRenewStart(e.target.value)} />
+              </div>
+              <div>
+                <label>تاريخ النهاية الجديد</label>
+                <Input type="date" value={renewEnd} onChange={(e) => setRenewEnd(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRenewOpen(false)}>إلغاء</Button>
+              <Button onClick={async () => {
+                if (!renewSource) return;
+                try {
+                  const { renewContract } = await import('@/services/contractService');
+                  const created = await renewContract(String(renewSource.id), { start_date: renewStart, end_date: renewEnd, keep_cost: true });
+                  toast.success(`تم إنشاء عقد جديد برقم ${String(created?.Contract_Number ?? created?.id ?? '')}`);
+                  setRenewOpen(false); setRenewSource(null); setRenewStart(''); setRenewEnd('');
+                  loadData();
+                } catch (e) {
+                  console.error(e);
+                  toast.error('فشل تجديد العقد');
+                }
+              }}>تجديد</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

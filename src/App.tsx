@@ -13,17 +13,23 @@ import ContractCreate from "./pages/ContractCreate";
 import ContractEdit from "./pages/ContractEdit";
 import ContractView from "./pages/ContractView";
 import Billboards from "./pages/Billboards";
+import BillboardCleanup from "./pages/BillboardCleanup";
+import BillboardMaintenance from "./pages/BillboardMaintenance";
 import Users from "./pages/Users";
 import PricingList from "./pages/PricingList";
 import Settings from "./pages/Settings";
 import Reports from "./pages/Reports";
-import InstallationPricing from "./pages/InstallationPricing";
 import Expenses from "./pages/Expenses";
 import Customers from "./pages/Customers";
+import CustomerMerge from "./pages/CustomerMerge";
 import BookingRequests from "./pages/BookingRequests";
 import SharedBillboards from "./pages/SharedBillboards";
 import SharedCompanies from "./pages/SharedCompanies";
 import Payments from "./pages/Payments";
+import CustomerBilling from "./pages/CustomerBilling";
+import RevenueManagement from "./pages/RevenueManagement";
+import ExpenseManagement from "./pages/ExpenseManagement";
+import PrintInvoices from "./pages/PrintInvoices";
 import { MainLayout } from "@/components/Layout/MainLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
@@ -65,6 +71,26 @@ const App = () => (
                 <ProtectedRoute requireAdmin>
                   <MainLayout>
                     <Billboards />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/billboard-cleanup"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <MainLayout>
+                    <BillboardCleanup />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/billboard-maintenance"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <MainLayout>
+                    <BillboardMaintenance />
                   </MainLayout>
                 </ProtectedRoute>
               }
@@ -140,11 +166,21 @@ const App = () => (
               }
             />
             <Route
-              path="/admin/installation-pricing"
+              path="/admin/revenue-management"
               element={
                 <ProtectedRoute requireAdmin>
                   <MainLayout>
-                    <InstallationPricing />
+                    <RevenueManagement />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/expense-management"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <MainLayout>
+                    <ExpenseManagement />
                   </MainLayout>
                 </ProtectedRoute>
               }
@@ -170,6 +206,26 @@ const App = () => (
               }
             />
             <Route
+              path="/admin/customer-billing"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <MainLayout>
+                    <CustomerBilling />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/customer-merge"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <MainLayout>
+                    <CustomerMerge />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/contracts"
               element={
                 <ProtectedRoute requireAdmin>
@@ -185,6 +241,16 @@ const App = () => (
                 <ProtectedRoute requireAdmin>
                   <MainLayout>
                     <Payments />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/print-invoices"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <MainLayout>
+                    <PrintInvoices />
                   </MainLayout>
                 </ProtectedRoute>
               }
@@ -210,7 +276,7 @@ const App = () => (
               }
             />
             <Route
-              path="/admin/contracts/view"
+              path="/admin/contracts/view/:id"
               element={
                 <ProtectedRoute requireAdmin>
                   <MainLayout>

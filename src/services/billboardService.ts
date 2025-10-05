@@ -9,7 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 const normalizeBillboardSize = (size: string): string => {
   if (!size) return '4x12';
 
-  // تحويل النص إلى صغير وإ��الة المسافات
+  // تحويل النص إلى صغير وإ  الة المسافات
   let normalized = size.toString().trim().toLowerCase();
 
   // استبدال X بـ x
@@ -35,7 +35,7 @@ const normalizeBillboardSize = (size: string): string => {
     return sizeMap[normalized];
   }
 
-  // إذا لم توجد في الخر��طة، التأكد من التنسيق الصحيح
+  // إذا لم توجد في الخر  طة، التأكد من التنسيق الصحيح
   const parts = normalized.split('x');
   if (parts.length === 2) {
     const [width, height] = parts.map(p => parseInt(p)).filter(n => !isNaN(n));
@@ -128,7 +128,7 @@ async function readCsvFromUrl(url: string, timeoutMs = 10000) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      // تحليل أفضل للـ CSV مع مراعاة النصوص المقتب��ة
+      // تحليل أفضل للـ CSV مع مراعاة النصوص المقتب  ة
       const values = [];
       let currentValue = '';
       let insideQuotes = false;
@@ -203,7 +203,7 @@ function processBillboardFromSupabase(row: any, index: number): Billboard {
     } else if (typeof remainingDays === 'number' && remainingDays <= 0) {
       // انتهى العقد
       if (status === 'rented') {
-        // إذا كانت الحالة مؤجر لكن انتهى العقد، اعتب��ها متاحة الآن
+        // إذا كانت الحالة مؤجر لكن انتهى العقد، اعتب  ها متاحة الآن
         (row as any).Status = 'available';
       }
       remainingDays = 0;
@@ -288,7 +288,7 @@ function processBillboardFromCSV(row: any, index: number): Billboard {
   let nearExpiry = false;
   let remainingDays: number | undefined = undefined;
 
-  // تحديد ا��حالة والمنتهية والقريبة من الانتهاء
+  // تحديد ا  حالة والمنتهية والقريبة من الانتهاء
   if (contractNumber && contractNumber.trim() !== '') {
     status = 'rented';
     if (expiryDate) {
@@ -309,7 +309,7 @@ function processBillboardFromCSV(row: any, index: number): Billboard {
   // معالجة الصورة
   let imageUrl = row['image_url'] || row['@IMAGE'] || '';
   if (imageUrl && imageUrl.includes('googleusercontent.com')) {
-    // الص��رة جاهزة من Google Drive
+    // الص  رة جاهزة من Google Drive
   } else {
     // استخدام صور افتراضية
     const images = [billboardHighway, billboardCity, billboardCoastal];
@@ -427,7 +427,7 @@ export async function loadBillboards(): Promise<Billboard[]> {
       {
         id: '1',
         name: 'لوحة طريق المطار',
-        location: 'شار�� الزهراء، طرابلس',
+        location: 'شار   الزهراء، طرابلس',
         size: '4x10',
         price: 3500,
         installationPrice: 800,
@@ -439,7 +439,7 @@ export async function loadBillboards(): Promise<Billboard[]> {
       },
       {
         id: '2',
-        name: 'لوحة شار�� الجمهورية',
+        name: 'لوحة شار   الجمهورية',
         location: 'شارع الجمهورية، طرابلس',
         size: '5x13',
         price: 2500,

@@ -7,6 +7,7 @@ import { MapPin, Calendar, Building, Eye, User, FileText, Clock } from 'lucide-r
 import { Billboard } from '@/types';
 import { formatGregorianDate } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { BillboardImage } from './BillboardImage';
 
 interface BillboardGridCardProps {
   billboard: Billboard & {
@@ -14,6 +15,7 @@ interface BillboardGridCardProps {
       id: string;
       customer_name: string;
       ad_type: string;
+      "Ad Type": string;
       start_date: string;
       end_date: string;
       rent_cost: number;
@@ -35,14 +37,68 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
   // استخدام بيانات العقد المرتبط أو البيانات المباشرة في اللوحة
   const contractInfo = billboard.contract;
   const customerName = contractInfo?.customer_name || billboard.Customer_Name || (billboard as any).clientName || '';
-  const adType = contractInfo?.ad_type || billboard.Ad_Type || (billboard as any).adType || '';
+  
+  // ✅ FIXED: تحسين استدعاء نوع الإعلان مع جميع الاحتمالات الممكنة
+  const getAdType = () => {
+    // من بيانات العقد أولاً
+    if (contractInfo) {
+      const contractAdType = contractInfo["Ad Type"] || 
+                           contractInfo.ad_type || 
+                           contractInfo.advertisement_type || 
+                           contractInfo.type || '';
+      if (contractAdType && contractAdType.trim()) {
+        return contractAdType.trim();
+      }
+    }
+    
+    // من بيانات اللوحة مباشرة
+    const billboardAdType = billboard.Ad_Type || 
+                           (billboard as any).adType || 
+                           (billboard as any).ad_type || 
+                           (billboard as any).AdType || 
+                           (billboard as any).advertisement_type || 
+                           (billboard as any).type || '';
+    
+    if (billboardAdType && billboardAdType.trim()) {
+      return billboardAdType.trim();
+    }
+    
+    // من بيانات العقود المدمجة في اللوحة
+    if ((billboard as any).contracts && Array.isArray((billboard as any).contracts) && (billboard as any).contracts.length > 0) {
+      const contract = (billboard as any).contracts[0];
+      const contractAdType = contract["Ad Type"] || 
+                           contract.ad_type || 
+                           contract.advertisement_type || 
+                           contract.type || '';
+      if (contractAdType && contractAdType.trim()) {
+        return contractAdType.trim();
+      }
+    }
+    
+    return '';
+  };
+  
+  const adType = getAdType();
+  
   const startDate = contractInfo?.start_date || billboard.Rent_Start_Date || '';
   const endDate = contractInfo?.end_date || billboard.Rent_End_Date || '';
   const contractId = (billboard as any).Contract_Number || (billboard as any).contractNumber || contractInfo?.id || '';
 
-  // تحديد حالة اللوحة
-  const hasActiveContract = !!(contractInfo || billboard.Contract_Number);
-  const isAvailable = !hasActiveContract || billboard.Status === 'متاح' || billboard.Status === 'available';
+  // تحديد حالة اللوحة مع فحص تاريخ انتهاء العقد
+  const isContractExpired = () => {
+    if (!endDate) return false;
+    try {
+      const endDateObj = new Date(endDate);
+      const today = new Date();
+      return endDateObj < today;
+    } catch {
+      return false;
+    }
+  };
+
+  const contractExpired = isContractExpired();
+  const hasActiveContract = !!(contractInfo || billboard.Contract_Number) && !contractExpired;
+  const isAvailable = !hasActiveContract || billboard.Status === 'متاح' || billboard.Status === 'available' || contractExpired;
   const isMaintenance = billboard.Status === 'صيانة' || billboard.Status === 'maintenance';
   
   let statusLabel = 'متاح';
@@ -51,14 +107,14 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
   if (isMaintenance) {
     statusLabel = 'صيانة';
     statusClass = 'bg-amber-500 hover:bg-amber-600';
-  } else if (hasActiveContract && !isAvailable) {
+  } else if (hasActiveContract && !isAvailable && !contractExpired) {
     statusLabel = 'محجوز';
     statusClass = 'bg-red-500 hover:bg-red-600';
   }
 
   // حساب الأيام المتبقية
   const getDaysRemaining = () => {
-    if (!endDate) return null;
+    if (!endDate || contractExpired) return null;
 
     try {
       const endDateObj = new Date(endDate);
@@ -77,34 +133,46 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
 
   const [previewOpen, setPreviewOpen] = React.useState(false);
 
-  const initialLocal = (billboard as any).image_name ? `/image/${(billboard as any).image_name}` : ((billboard.Image_URL && billboard.Image_URL.startsWith('/')) ? billboard.Image_URL : ((billboard.Image_URL && !billboard.Image_URL.startsWith('http')) ? `/image/${billboard.Image_URL}` : ''));
-  const remoteUrl = (billboard as any).Image_URL && (billboard as any).Image_URL.startsWith('http') ? (billboard as any).Image_URL : '';
-  const [imgSrc, setImgSrc] = React.useState<string>(initialLocal || remoteUrl || '');
+  // Helper function to get face count display name
+  const getFaceCountDisplay = () => {
+    const facesCount = billboard.Faces_Count || (billboard as any).faces_count || (billboard as any).faces || (billboard as any).Number_of_Faces || (billboard as any).Faces || '';
+    
+    // If it's a number, convert to descriptive text
+    switch (String(facesCount)) {
+      case '1':
+        return 'وجه واحد';
+      case '2':
+        return 'وجهين';
+      case '3':
+        return 'ثلاثة أوجه';
+      case '4':
+        return 'أربعة أوجه';
+      default:
+        return facesCount || 'غير محدد';
+    }
+  };
+
+  // Helper function to get billboard type display
+  const getBillboardTypeDisplay = () => {
+    return (billboard as any).billboard_type || (billboard as any).Billboard_Type || 'غير محدد';
+  };
+
+  // Helper function to get level display
+  const getLevelDisplay = () => {
+    return billboard.Level || (billboard as any).level || 'غير محدد';
+  };
 
   return (
-    <Card className="overflow-hidden rounded-2xl bg-gradient-card border-0 shadow-card hover:shadow-luxury transition-smooth">
+    <Card className="overflow-hidden rounded-2xl bg-card border-border shadow-lg hover:shadow-xl transition-all duration-300">
       <div className="relative">
         {/* صورة اللوحة */}
         <div className="aspect-video bg-muted relative overflow-hidden">
-          {imgSrc ? (
-            <img
-              src={imgSrc}
-              alt={billboard.Billboard_Name}
-              className="w-full h-full object-cover cursor-zoom-in"
-              onClick={() => setPreviewOpen(true)}
-              onError={(e) => {
-                if (remoteUrl && imgSrc !== remoteUrl) {
-                  setImgSrc(remoteUrl);
-                } else {
-                  setImgSrc('');
-                }
-              }}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/60">
-              <Building className="h-12 w-12 text-muted-foreground" />
-            </div>
-          )}
+          <BillboardImage
+            billboard={billboard}
+            alt={billboard.Billboard_Name}
+            className="w-full h-full object-cover cursor-zoom-in"
+            onClick={() => setPreviewOpen(true)}
+          />
 
           {/* حجم اللوحة */}
           <div className="absolute top-3 right-3">
@@ -124,7 +192,7 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
           </div>
 
           {/* تحذير القريبة من الانتهاء */}
-          {isNearExpiry && (
+          {isNearExpiry && !contractExpired && (
             <div className="absolute bottom-3 right-3">
               <Badge variant="outline" className="bg-yellow-500/90 text-yellow-900 border-yellow-600">
                 <Calendar className="h-3 w-3 mr-1" />
@@ -132,10 +200,20 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
               </Badge>
             </div>
           )}
+
+          {/* تحذير العقد المنتهي */}
+          {contractExpired && (contractId || endDate) && (
+            <div className="absolute bottom-3 right-3">
+              <Badge variant="outline" className="bg-destructive/90 text-destructive-foreground border-destructive">
+                <Calendar className="h-3 w-3 mr-1" />
+                العقد منتهي
+              </Badge>
+            </div>
+          )}
         </div>
 
         <CardContent className="p-4">
-          {/* ��عرف اللوحة */}
+          {/* معرف اللوحة */}
           <div className="mb-3">
             <h3 className="font-extrabold text-2xl md:text-3xl text-foreground tracking-tight">
               {billboard.Billboard_Name || `لوحة رقم ${billboard.ID}`}
@@ -165,17 +243,35 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
             )}
           </div>
 
-          {/* معلومات إضافية */}
-          <div className="mb-4 text-sm space-y-1">
-            <div>
-              <span className="text-muted-foreground">عدد الأوجه:</span>{' '}
-              <span className="font-medium">{billboard.Faces_Count || '1'}</span>
+          {/* معلومات إضافية محسنة */}
+          <div className="mb-4 text-sm space-y-2">
+            <div className="grid grid-cols-1 gap-2">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">عدد الأوجه:</span>
+                <Badge variant="outline" className="text-xs font-medium">
+                  {getFaceCountDisplay()}
+                </Badge>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">نوع اللوحة:</span>
+                <Badge variant="outline" className="text-xs font-medium">
+                  {getBillboardTypeDisplay()}
+                </Badge>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">المستوى:</span>
+                <Badge variant="outline" className="text-xs font-medium">
+                  {getLevelDisplay()}
+                </Badge>
+              </div>
             </div>
           </div>
 
-          {/* معلومات العقد المحسنة - تنسيق يمين ويسار */}
-          {hasActiveContract && (
-            <div className="mb-4 p-3 bg-muted/50 rounded-lg border">
+          {/* معلومات العقد المحسنة - فقط للعقود النشطة وغير المنتهية */}
+          {hasActiveContract && !contractExpired && (
+            <div className="mb-4 p-3 bg-muted/50 rounded-lg border border-border">
               <div className="flex items-center gap-2 mb-3">
                 <FileText className="h-4 w-4 text-primary" />
                 <span className="font-semibold text-sm">معلومات العقد</span>
@@ -206,6 +302,7 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
 
               {/* الصف الثاني: نوع الإعلان والأيام المتبقية */}
               <div className="grid grid-cols-2 gap-4 mb-2">
+                {/* ✅ FIXED: عرض نوع الإعلان مع التحقق من وجوده */}
                 {adType && (
                   <div className="flex items-center gap-2 text-xs">
                     <Building className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -264,7 +361,7 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
 
               {/* قيمة الإيجار */}
               {contractInfo?.rent_cost && (
-                <div className="mt-2 pt-2 border-t border-muted">
+                <div className="mt-2 pt-2 border-t border-border">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">قيمة الإيجار:</span>
                     <span className="font-bold text-primary">{contractInfo.rent_cost.toLocaleString()} د.ل</span>
@@ -274,18 +371,26 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
             </div>
           )}
 
-          {/* معلومات العقد للمدير فقط (النسخة القديمة للتوافق) */}
-          {isAdmin && !hasActiveContract && (contractId || endDate || customerName) && (
-            <div className="mb-4 text-xs text-muted-foreground">
-              <div className="flex flex-wrap gap-2">
+          {/* معلومات العقد المنتهي للمدير فقط - باستخدام ألوان النظام */}
+          {isAdmin && contractExpired && (contractId || endDate || customerName) && (
+            <div className="mb-4 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="h-4 w-4 text-destructive" />
+                <span className="font-semibold text-sm text-destructive">عقد منتهي</span>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
                 {contractId && (
-                  <Badge variant="outline">رقم العقد: {contractId}</Badge>
+                  <Badge variant="outline" className="text-destructive border-destructive/30">رقم العقد: {contractId}</Badge>
                 )}
                 {endDate && (
-                  <Badge variant="secondary">ينتهي: {formatGregorianDate(endDate, 'ar-LY')}</Badge>
+                  <Badge variant="secondary" className="bg-destructive/20 text-destructive">انتهى: {formatGregorianDate(endDate, 'ar-LY')}</Badge>
                 )}
                 {customerName && (
-                  <Badge variant="outline">{customerName}</Badge>
+                  <Badge variant="outline" className="text-destructive border-destructive/30">{customerName}</Badge>
+                )}
+                {/* ✅ ADDED: عرض نوع الإعلان في العقود المنتهية أيضاً */}
+                {adType && (
+                  <Badge variant="outline" className="text-destructive border-destructive/30">نوع الإعلان: {adType}</Badge>
                 )}
               </div>
             </div>
@@ -331,9 +436,11 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
       {/* Image Preview Dialog */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-w-4xl p-0">
-          {imgSrc ? (
-            <img src={imgSrc} alt={billboard.Billboard_Name} className="w-full h-auto object-contain" />
-          ) : null}
+          <BillboardImage 
+            billboard={billboard} 
+            alt={billboard.Billboard_Name} 
+            className="w-full h-auto object-contain" 
+          />
         </DialogContent>
       </Dialog>
     </Card>

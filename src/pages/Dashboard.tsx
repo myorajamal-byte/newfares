@@ -1,372 +1,597 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { fetchDashboardStats } from '@/services/supabaseService';
-import { Billboard } from '@/types';
-import { BillboardGridCard } from '@/components/BillboardGridCard';
-import { ContractsTable } from '@/components/ContractsTable';
-import { PricingTable } from '@/components/PricingTable';
-import { UsersTable } from '@/components/UsersTable';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useState, useEffect, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import {
-  Building,
-  FileText,
-  TrendingUp,
-  AlertTriangle,
-  Search,
-  Filter,
-  BarChart3,
-  Users,
-  DollarSign,
-  Eye,
-  Calendar
-} from 'lucide-react';
-import { BookingRequestsTable } from '@/components/BookingRequestsTable';
-import { toast } from '@/hooks/use-toast';
+import { Calendar, FileText, Receipt, Monitor, Clock, Plus, Eye } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { format, differenceInDays, parseISO } from 'date-fns';
+import { ar } from 'date-fns/locale';
 
-interface DashboardStats {
-  totalBillboards: number;
-  availableBillboards: number;
-  rentedBillboards: number;
-  nearExpiryBillboards: number;
-  totalContracts: number;
-  totalRevenue: number;
-  availableBillboardsList: Billboard[];
-  nearExpiryBillboardsList: Billboard[];
+interface LegacyContract {
+  Contract_Number: number;
+  'Customer Name': string;
+  'Ad Type': string;
+  'Total Rent': number;
+  'Start Date': string;
+  'End Date': string;
+  'Contract Date': string;
+  customer_id: string;
+  id: number;
 }
 
-const Dashboard = () => {
-  const { user, isAdmin } = useAuth();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+interface NewContract {
+  id: number;
+  contract_number: string;
+  customer_name: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  total_amount: number;
+  created_at: string;
+}
+
+interface Payment {
+  id: string;
+  customer_name: string;
+  amount: number;
+  paid_at: string;
+  entry_type: string;
+  created_at: string;
+}
+
+interface Billboard {
+  id: number;
+  Billboard_Name: string;
+  Size: string;
+  Level: string;
+  Municipality: string;
+  Status: string;
+  created_at: string;
+}
+
+export default function Dashboard() {
+  const [legacyContracts, setLegacyContracts] = useState<LegacyContract[]>([]);
+  const [newContracts, setNewContracts] = useState<NewContract[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [billboards, setBillboards] = useState<Billboard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
 
-  useEffect(() => {
-    if (isAdmin) {
-      loadDashboardStats();
-    } else {
-      setLoading(false);
-    }
-  }, [isAdmin]);
-
-  const loadDashboardStats = async () => {
+  // تحميل البيانات
+  const loadData = async () => {
     try {
-      const data = await fetchDashboardStats();
-      setStats(data);
+      setLoading(true);
+
+      console.log('🔄 بدء تحميل بيانات لوحة الإدارة...');
+
+      // تحميل العقود القديمة (الجدول الرئيسي) - ترتيب حسب تاريخ العقد
+      const { data: legacyData, error: legacyError } = await supabase
+        .from('Contract')
+        .select('*')
+        .order('Contract Date', { ascending: false }); // ترتيب حسب تاريخ العقد
+
+      if (legacyError) {
+        console.error('❌ خطأ في تحميل العقود القديمة:', legacyError);
+        toast.error(`فشل في تحميل العقود: ${legacyError.message}`);
+      } else {
+        console.log('✅ تم تحميل العقود القديمة:', legacyData?.length || 0, 'عقد');
+        setLegacyContracts(legacyData || []);
+      }
+
+      // تحميل العقود الجديدة (للمستقبل)
+      const { data: newData, error: newError } = await supabase
+        .from('contract')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (newError) {
+        console.error('❌ خطأ في تحميل العقود الجديدة:', newError);
+      } else {
+        console.log('✅ تم تحميل العقود الجديدة:', newData?.length || 0, 'عقد');
+        setNewContracts(newData || []);
+      }
+
+      // تحميل المدفوعات من جدول customer_payments - ترتيب حسب تاريخ الإنشاء
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('customer_payments')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (paymentsError) {
+        console.error('❌ خطأ في تحميل المدفوعات:', paymentsError);
+        toast.error(`فشل في تحميل المدفوعات: ${paymentsError.message}`);
+      } else {
+        console.log('✅ تم تحميل المدفوعات:', paymentsData?.length || 0, 'دفعة');
+        setPayments(paymentsData || []);
+      }
+
+      // تحميل اللوحات - ترتيب حسب تاريخ الإنشاء
+      const { data: billboardsData, error: billboardsError } = await supabase
+        .from('billboards')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (billboardsError) {
+        console.error('❌ خطأ في تحميل اللوحات:', billboardsError);
+        toast.error(`فشل في تحميل اللوحات: ${billboardsError.message}`);
+      } else {
+        console.log('✅ تم تحميل اللوحات:', billboardsData?.length || 0, 'لوحة');
+        setBillboards(billboardsData || []);
+      }
+
+      console.log('🎉 تم الانتهاء من تحميل جميع البيانات');
+
     } catch (error) {
-      toast({
-        title: "خطأ في تحميل البيانات",
-        description: "تعذر تحميل إحصائي��ت لوحة التحكم",
-        variant: "destructive"
-      });
+      console.error('💥 خطأ عام في تحميل البيانات:', error);
+      toast.error('حدث خطأ في تحميل البيانات');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBillboardAction = (billboard: Billboard) => {
-    toast({
-      title: "قريباً",
-      description: "سيتم إضافة إجراءات إدارة اللوحات قريباً"
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // العقود التي تقارب على الانتهاء (من الجدول القديم بشكل أساسي)
+  const expiringContracts = useMemo(() => {
+    const today = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+    // العقود القديمة المنتهية قريباً
+    const legacyExpiring = legacyContracts
+      .filter(contract => {
+        try {
+          if (!contract['End Date']) return false;
+          const endDate = new Date(contract['End Date']);
+          return endDate >= today && endDate <= thirtyDaysFromNow;
+        } catch (error) {
+          return false;
+        }
+      })
+      .map(contract => ({
+        id: `legacy_${contract.Contract_Number}`,
+        contract_number: contract.Contract_Number?.toString() || '',
+        customer_name: contract['Customer Name'] || '',
+        ad_type: contract['Ad Type'] || '',
+        end_date: contract['End Date'] || '',
+        total_amount: Number(contract['Total']) || 0,
+        source: 'legacy'
+      }));
+
+    // العقود الجديدة المنتهية قريباً
+    const newExpiring = newContracts
+      .filter(contract => {
+        if (contract.status === 'closed' || contract.status === 'cancelled') return false;
+        try {
+          const endDate = parseISO(contract.end_date);
+          return endDate >= today && endDate <= thirtyDaysFromNow;
+        } catch (error) {
+          return false;
+        }
+      })
+      .map(contract => ({
+        id: `new_${contract.id}`,
+        contract_number: contract.contract_number,
+        customer_name: contract.customer_name,
+        ad_type: 'غير محدد', // العقود الجديدة لا تحتوي على نوع الإعلان بعد
+        end_date: contract.end_date,
+        total_amount: Number(contract.total_amount) || 0,
+        source: 'new'
+      }));
+
+    const allExpiring = [...legacyExpiring, ...newExpiring];
+
+    // ترتيب من الأقرب للأبعد
+    const sorted = allExpiring.sort((a, b) => {
+      try {
+        const daysLeftA = differenceInDays(new Date(a.end_date), today);
+        const daysLeftB = differenceInDays(new Date(b.end_date), today);
+        return daysLeftA - daysLeftB;
+      } catch (error) {
+        return 0;
+      }
     });
-  };
 
-  const filterBillboards = (billboards: Billboard[], status: string) => {
-    let filtered = billboards;
-    
-    if (searchTerm) {
-      filtered = filtered.filter(billboard => 
-        billboard.Billboard_Name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        billboard.District?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        billboard.City?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+    console.log('📊 العقود المنتهية قريباً:', sorted.length);
+    return sorted.slice(0, 10);
+  }, [legacyContracts, newContracts]);
 
-    switch (status) {
-      case 'available':
-        return filtered.filter(b => 
-          b.Status === 'متاح' || b.Status === 'available' || !b.Contract_Number
-        );
-      case 'rented':
-        return filtered.filter(b => 
-          b.Status === 'مؤجر' || b.Status === 'rented' || b.Contract_Number
-        );
-      case 'near-expiry':
-        return filtered.filter(b => isNearExpiry(b));
-      default:
-        return filtered;
-    }
-  };
+  // آخر العقود المضافة (من الجدولين) - إصلاح الترتيب حسب التاريخ
+  const recentContracts = useMemo(() => {
+    const allRecent = [];
 
-  const isNearExpiry = (billboard: Billboard) => {
-    if (!billboard.Rent_End_Date) return false;
-    
+    // العقود القديمة - ترتيب حسب تاريخ العقد
+    const legacyRecent = legacyContracts
+      .map(contract => ({
+        id: `legacy_${contract.Contract_Number}`,
+        contract_number: contract.Contract_Number?.toString() || '',
+        customer_name: contract['Customer Name'] || '',
+        ad_type: contract['Ad Type'] || '',
+        total_amount: Number(contract['Total Rent']) || 0,
+        created_at: contract['Contract Date'] || '',
+        date_for_sorting: new Date(contract['Contract Date'] || '1970-01-01').getTime(),
+        source: 'legacy'
+      }));
+
+    // العقود الجديدة
+    const newRecent = newContracts.map(contract => ({
+      id: `new_${contract.id}`,
+      contract_number: contract.contract_number,
+      customer_name: contract.customer_name,
+      ad_type: 'غير محدد',
+      total_amount: Number(contract.total_amount) || 0,
+      created_at: contract.created_at,
+      date_for_sorting: new Date(contract.created_at).getTime(),
+      source: 'new'
+    }));
+
+    allRecent.push(...legacyRecent, ...newRecent);
+
+    // ترتيب حسب التاريخ (الأحدث أولاً)
+    const sorted = allRecent.sort((a, b) => b.date_for_sorting - a.date_for_sorting);
+
+    console.log('📋 آخر العقود المضافة (مرتبة):', sorted.slice(0, 5).map(c => ({
+      contract: c.contract_number,
+      customer: c.customer_name,
+      date: c.created_at,
+      source: c.source
+    })));
+
+    return sorted.slice(0, 5);
+  }, [legacyContracts, newContracts]);
+
+  // آخر المدفوعات (الواصلات) - ترتيب حسب تاريخ الإنشاء
+  const recentPayments = useMemo(() => {
+    const filteredPayments = payments
+      .filter(p => p.entry_type === 'receipt' || p.entry_type === 'account_payment')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    console.log('💰 آخر المدفوعات (مرتبة):', filteredPayments.slice(0, 5).map(p => ({
+      customer: p.customer_name,
+      amount: p.amount,
+      date: p.created_at
+    })));
+
+    return filteredPayments.slice(0, 5);
+  }, [payments]);
+
+  // آخر اللوحات المضافة - ترتيب حسب تاريخ الإنشاء
+  const recentBillboards = useMemo(() => {
+    const sortedBillboards = billboards
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    console.log('📺 آخر اللوحات (مرتبة):', sortedBillboards.slice(0, 5).map(b => ({
+      name: b.Billboard_Name,
+      municipality: b.Municipality,
+      date: b.created_at
+    })));
+
+    return sortedBillboards.slice(0, 5);
+  }, [billboards]);
+
+  // حساب الأيام المتبقية
+  const getDaysLeft = (endDate: string) => {
     try {
-      const endDate = new Date(billboard.Rent_End_Date);
       const today = new Date();
-      const diffTime = endDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      return diffDays <= 20 && diffDays > 0;
-    } catch {
-      return false;
+      const end = new Date(endDate);
+      return differenceInDays(end, today);
+    } catch (error) {
+      return 0;
     }
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-dark flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <h2 className="text-xl font-bold mb-2">غير مخول</h2>
-            <p className="text-muted-foreground">يجب عليك تسجيل الدخول أولاً</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // تحديد لون البادج حسب الأيام المتبقية
+  const getExpiryBadgeColor = (daysLeft: number) => {
+    if (daysLeft <= 3) return 'bg-red-500 text-white';
+    if (daysLeft <= 7) return 'bg-orange-500 text-white';
+    if (daysLeft <= 15) return 'bg-yellow-500 text-black';
+    return 'bg-green-500 text-white';
+  };
 
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-gradient-dark flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">غير مخول</h2>
-            <p className="text-muted-foreground">
-              هذه الصفحة مخصصة للمديرين فقط. ليس لديك الصلاحيات اللازمة للوصول إلى لوحة التحكم.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // تنسيق التاريخ بأمان
+  const formatDateSafe = (dateString: string) => {
+    try {
+      return format(new Date(dateString), 'dd/MM/yyyy', { locale: ar });
+    } catch (error) {
+      return dateString;
+    }
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-dark flex items-center justify-center">
+      <div className="expenses-loading">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-foreground">جاري تحميل لوحة التحكم...</p>
+          <p className="text-muted-foreground">جاري تحميل بيانات الإدارة...</p>
+          <p className="text-xs text-muted-foreground mt-2">يرجى فتح وحدة التحكم (F12) لمراقبة عملية التحميل</p>
         </div>
       </div>
     );
   }
 
-  const allBillboards = stats?.availableBillboardsList || [];
-  const filteredBillboards = filterBillboards(allBillboards, 'all');
-
   return (
-    <div className="min-h-screen bg-gradient-dark" dir="rtl">
-      <div className="container mx-auto px-4 py-8">
-        {/* رأس الصفحة */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <BarChart3 className="h-8 w-8 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">لوحة التحكم</h1>
-              <p className="text-muted-foreground">إدارة اللوحات الإعلانية والعقود</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button asChild variant="outline">
-              <Link to="/">العودة للصفحة الرئيسية</Link>
-            </Button>
-            <Badge variant="outline" className="gap-2">
-              <Users className="h-4 w-4" />
-              مدير النظام
-            </Badge>
-          </div>
+    <div className="expenses-container">
+      {/* العنوان الرئيسي */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-primary">لوحة الإدارة</h1>
+          <p className="text-muted-foreground">نظرة شاملة على آخر التحديثات والعقود المهمة</p>
         </div>
+        <Button onClick={loadData} variant="outline" disabled={loading}>
+          تحديث البيانات
+        </Button>
+      </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="overview" className="gap-2">
-              <BarChart3 className="h-4 w-4" />
-              نظرة عامة
-            </TabsTrigger>
-            <TabsTrigger value="billboards" className="gap-2">
-              <Building className="h-4 w-4" />
-              إدارة اللوحات
-            </TabsTrigger>
-            <TabsTrigger value="contracts" className="gap-2">
-              <FileText className="h-4 w-4" />
-              العقود
-            </TabsTrigger>
-            <TabsTrigger value="pricing" className="gap-2">
-              <DollarSign className="h-4 w-4" />
-              ��لأسعار
-            </TabsTrigger>
-            <TabsTrigger value="users" className="gap-2">
-              <Users className="h-4 w-4" />
-              المستخدمين
-            </TabsTrigger>
-            <TabsTrigger value="requests" className="gap-2">
-              <Calendar className="h-4 w-4" />
-              طلبات الحجز
-            </TabsTrigger>
-          </TabsList>
-
-          {/* النظرة العامة */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">إجمالي اللوحات</CardTitle>
-                  <Building className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats?.totalBillboards || 0}</div>
-                  <p className="text-xs text-muted-foreground">جميع اللوحات في النظام</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">اللوحات المتاحة</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600">{stats?.availableBillboards || 0}</div>
-                  <p className="text-xs text-muted-foreground">جاهزة للحجز</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">قريبة من الانتهاء</CardTitle>
-                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-orange-600">{stats?.nearExpiryBillboards || 0}</div>
-                  <p className="text-xs text-muted-foreground">تحتاج متابعة</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">إجمالي الإيرادات</CardTitle>
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats?.totalRevenue?.toLocaleString() || 0} د.ل</div>
-                  <p className="text-xs text-muted-foreground">العوائد الإجمالية</p>
-                </CardContent>
-              </Card>
+      {/* إحصائيات سريعة */}
+      <div className="expenses-stats-grid">
+        <Card className="expenses-stat-card">
+          <div className="expenses-stat-content">
+            <div>
+              <p className="expenses-stat-text">إجمالي العقود</p>
+              <p className="expenses-stat-value">{legacyContracts.length + newContracts.length}</p>
             </div>
-
-            {/* اللوحات القريبة من الانتهاء */}
-            {stats?.nearExpiryBillboardsList && stats.nearExpiryBillboardsList.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-orange-600" />
-                    اللوحات القريبة من الانتهاء
-                  </CardTitle>
-                  <CardDescription>اللوحات التي تحتاج إلى متابعة أو تجديد</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {stats.nearExpiryBillboardsList.map((billboard) => (
-                      <BillboardGridCard
-                        key={billboard.ID}
-                        billboard={billboard}
-                        onBooking={handleBillboardAction}
-                        showBookingActions={false}
-                      />
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* إدارة اللوحات */}
-          <TabsContent value="billboards" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>إدارة اللوحات</CardTitle>
-                    <CardDescription>عرض وإدارة جميع اللوحات الإعلانية</CardDescription>
-                  </div>
-                  <Button className="gap-2">
-                    <Building className="h-4 w-4" />
-                    إضافة لوحة جديدة
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1 relative">
-                    <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="ابحث عن اللوحات..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pr-10"
-                    />
-                  </div>
-                  <Button variant="outline" className="gap-2">
-                    <Filter className="h-4 w-4" />
-                    فلترة متقدمة
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* شبكة اللوحات */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredBillboards.slice(0, 10).map((billboard) => (
-                <BillboardGridCard
-                  key={billboard.ID}
-                  billboard={billboard}
-                  onBooking={handleBillboardAction}
-                  showBookingActions={false}
-                />
-              ))}
+            <FileText className="expenses-stat-icon stat-blue" />
+          </div>
+        </Card>
+        
+        <Card className="expenses-stat-card">
+          <div className="expenses-stat-content">
+            <div>
+              <p className="expenses-stat-text">العقود المنتهية قريباً</p>
+              <p className="expenses-stat-value stat-red">{expiringContracts.length}</p>
             </div>
+            <Clock className="expenses-stat-icon stat-red" />
+          </div>
+        </Card>
+        
+        <Card className="expenses-stat-card">
+          <div className="expenses-stat-content">
+            <div>
+              <p className="expenses-stat-text">إجمالي المدفوعات</p>
+              <p className="expenses-stat-value">{payments.length}</p>
+            </div>
+            <Receipt className="expenses-stat-icon stat-green" />
+          </div>
+        </Card>
+        
+        <Card className="expenses-stat-card">
+          <div className="expenses-stat-content">
+            <div>
+              <p className="expenses-stat-text">إجمالي اللوحات</p>
+              <p className="expenses-stat-value">{billboards.length}</p>
+            </div>
+            <Monitor className="expenses-stat-icon stat-purple" />
+          </div>
+        </Card>
+      </div>
 
-            {filteredBillboards.length === 0 && (
-              <div className="text-center py-12">
-                <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">لا توجد نتائج</h3>
-                <p className="text-muted-foreground">جرب تعديل معايير البحث أو الفلترة</p>
+      {/* القوائم الرئيسية */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* العقود التي تقارب على الانتهاء */}
+        <Card className="expenses-preview-card">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="expenses-preview-title">
+                <Clock className="inline-block ml-2 h-5 w-5" />
+                العقود المنتهية قريباً
+              </CardTitle>
+              <Badge variant="destructive">{expiringContracts.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {expiringContracts.length === 0 ? (
+              <div className="expenses-empty-state">
+                <p>لا توجد عقود تنتهي قريباً</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {expiringContracts.map((contract, index) => {
+                  const daysLeft = getDaysLeft(contract.end_date);
+                  return (
+                    <div key={contract.id} className="expenses-preview-item">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-foreground">{contract.contract_number}</p>
+                          <p className="text-sm text-muted-foreground">{contract.customer_name}</p>
+                          <p className="text-xs text-blue-400 font-medium">{contract.ad_type}</p>
+                          <p className="text-xs text-muted-foreground">
+                            ينتهي في: {formatDateSafe(contract.end_date)}
+                          </p>
+                        </div>
+                        <div className="text-left">
+                          <Badge className={getExpiryBadgeColor(daysLeft)}>
+                            {daysLeft === 0 ? 'ينتهي اليوم' : `${daysLeft} يوم`}
+                          </Badge>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {contract.total_amount.toLocaleString()} د.ل
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </TabsContent>
+          </CardContent>
+        </Card>
 
-          {/* العقود */}
-          <TabsContent value="contracts">
-            <ContractsTable />
-          </TabsContent>
+        {/* آخر العقود المضافة */}
+        <Card className="expenses-preview-card">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="expenses-preview-title">
+                <FileText className="inline-block ml-2 h-5 w-5" />
+                آخر 5 عقود مضافة
+              </CardTitle>
+              <Button size="sm" variant="outline">
+                <Plus className="h-4 w-4 ml-1" />
+                إضافة عقد
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {recentContracts.length === 0 ? (
+              <div className="expenses-empty-state">
+                <p>لا توجد عقود مضافة</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentContracts.map((contract, index) => (
+                  <div key={contract.id} className="expenses-preview-item">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">{contract.contract_number}</p>
+                        <p className="text-sm text-muted-foreground">{contract.customer_name}</p>
+                        <p className="text-xs text-blue-400 font-medium">{contract.ad_type}</p>
+                        <p className="text-xs text-muted-foreground">
+                          أضيف في: {formatDateSafe(contract.created_at)}
+                        </p>
+                      </div>
+                      <div className="text-left">
+                        <p className="expenses-amount-calculated">
+                          {contract.total_amount?.toLocaleString() || 0} د.ل
+                        </p>
+                        <Badge variant={contract.source === 'new' ? 'default' : 'secondary'}>
+                          {contract.source === 'new' ? 'جديد' : 'قديم'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-          {/* الأسعار */}
-          <TabsContent value="pricing">
-            <PricingTable />
-          </TabsContent>
+        {/* آخر المدفوعات المضافة */}
+        <Card className="expenses-preview-card">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="expenses-preview-title">
+                <Receipt className="inline-block ml-2 h-5 w-5" />
+                آخر 5 مدفوعات مضافة
+              </CardTitle>
+              <Button size="sm" variant="outline">
+                <Plus className="h-4 w-4 ml-1" />
+                إضافة دفعة
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {recentPayments.length === 0 ? (
+              <div className="expenses-empty-state">
+                <p>لا توجد مدفوعات مضافة</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentPayments.map((payment, index) => (
+                  <div key={`payment-${payment.id}-${index}`} className="expenses-preview-item">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">{payment.customer_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          نوع الدفعة: {payment.entry_type === 'receipt' ? 'إيصال' : 'دفعة حساب'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          تاريخ الدفع: {formatDateSafe(payment.paid_at)}
+                        </p>
+                      </div>
+                      <div className="text-left">
+                        <p className="expenses-amount-calculated">
+                          {payment.amount?.toLocaleString() || 0} د.ل
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDateSafe(payment.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-          {/* المستخدمين */}
-          <TabsContent value="users">
-            <UsersTable />
-          </TabsContent>
-
-          {/* طلبات الحجز */}
-          <TabsContent value="requests">
-            <BookingRequestsTable />
-          </TabsContent>
-        </Tabs>
+        {/* آخر اللوحات المضافة */}
+        <Card className="expenses-preview-card">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="expenses-preview-title">
+                <Monitor className="inline-block ml-2 h-5 w-5" />
+                آخر 5 لوحات مضافة
+              </CardTitle>
+              <Button size="sm" variant="outline">
+                <Plus className="h-4 w-4 ml-1" />
+                إضافة لوحة
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {recentBillboards.length === 0 ? (
+              <div className="expenses-empty-state">
+                <p>لا توجد لوحات مضافة</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentBillboards.map((billboard, index) => (
+                  <div key={`billboard-${billboard.id}-${index}`} className="expenses-preview-item">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">{billboard.Billboard_Name}</p>
+                        <p className="text-sm text-muted-foreground">{billboard.Municipality}</p>
+                        <p className="text-xs text-muted-foreground">
+                          أضيفت في: {formatDateSafe(billboard.created_at)}
+                        </p>
+                      </div>
+                      <div className="text-left">
+                        <Badge variant="outline" className="mb-1">
+                          {billboard.Size}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">مستوى {billboard.Level}</p>
+                        <Badge variant={billboard.Status === 'متاح' ? 'default' : 'secondary'}>
+                          {billboard.Status}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* أزرار الإجراءات السريعة */}
+      <Card className="expenses-preview-card">
+        <CardHeader>
+          <CardTitle className="expenses-preview-title">الإجراءات السريعة</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="expenses-actions">
+            <Button className="expenses-action-btn">
+              <Plus className="h-4 w-4" />
+              إضافة عقد جديد
+            </Button>
+            <Button variant="outline" className="expenses-action-btn">
+              <Receipt className="h-4 w-4" />
+              إضافة دفعة جديدة
+            </Button>
+            <Button variant="outline" className="expenses-action-btn">
+              <Monitor className="h-4 w-4" />
+              إضافة لوحة جديدة
+            </Button>
+            <Button variant="outline" className="expenses-action-btn">
+              <Eye className="h-4 w-4" />
+              عرض التقارير
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
-};
-
-export default Dashboard;
+}
