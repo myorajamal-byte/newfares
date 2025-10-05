@@ -79,6 +79,42 @@ const CURRENCIES = [
   { code: 'EUR', name: 'يورو', symbol: '€', writtenName: 'يورو' },
 ];
 
+const INVOICE_TYPES: InvoiceTypeOption[] = [
+  {
+    value: 'print_only',
+    label: 'فاتورة طباعة فقط',
+    description: 'تشمل تكلفة الطباعة فقط لكل لوحة ومساحة.'
+  },
+  {
+    value: 'installation_only',
+    label: 'فاتورة تركيب فقط',
+    description: 'تشمل تكلفة التركيب فقط لكل لوحة.'
+  },
+  {
+    value: 'print_and_installation',
+    label: 'فاتورة طباعة وتركيب',
+    description: 'تشمل تكاليف الطباعة والتركيب معًا لكل لوحة.'
+  }
+];
+
+interface InvoiceSubmissionPayload {
+  invoiceType: InvoiceTypeValue;
+  subtotal: number;
+  printSubtotal: number;
+  installationSubtotal: number;
+  total: number;
+  discount: number;
+  discountType: 'percentage' | 'fixed';
+  discountAmount: number;
+  includeAccountBalance: boolean;
+  accountPayments: number;
+  items: PrintItem[];
+  invoiceNumber: string;
+  invoiceDate: string;
+  currencyCode: string;
+  currencySymbol: string;
+}
+
 // ✅ دالة تنسيق الأرقام العربية
 const formatArabicNumber = (num: number): string => {
   if (isNaN(num) || num === null || num === undefined) return '0';
@@ -681,7 +717,7 @@ export default function ModernPrintInvoiceDialog({
               <div class="customer-title">بيانات العميل</div>
               <div class="customer-details">
                 <strong>الاسم:</strong> ${customerName}<br>
-                <strong>العقود ��لمرتبطة:</strong> ${selectedContracts.join(', ')}<br>
+                <strong>العقود المرتبطة:</strong> ${selectedContracts.join(', ')}<br>
                 <strong>تاريخ الأمر:</strong> ${formattedDate}
               </div>
             </div>
@@ -744,7 +780,7 @@ export default function ModernPrintInvoiceDialog({
       const printWindow = window.open('', '_blank', windowFeatures);
 
       if (!printWindow) {
-        throw new Error('فشل في فتح نافذة الطباعة. يرجى التحقق من إعدادات المتصفح والسماح بالنوافذ المنبثقة.');
+        throw new Error('فشل في فتح نافذة الطباعة. يرجى التحقق من إعدادات المتصفح وا��سماح بالنوافذ المنبثقة.');
       }
 
       printWindow.document.title = fileName;
@@ -1160,7 +1196,7 @@ export default function ModernPrintInvoiceDialog({
           throw new Error('فشل في فتح نافذة الطباعة. يرجى التحقق من إعدادات المتصفح والسماح بالنوافذ المنبثقة.');
         }
 
-        // ✅ تعيين عنوان النافذة مع معلومات العميل والعقود والتاريخ
+        // ✅ تعيين عنوان النافذة مع معلوما�� العميل والعقود والتاريخ
         printWindow.document.title = fileName;
 
         printWindow.document.open();
@@ -1580,7 +1616,7 @@ export default function ModernPrintInvoiceDialog({
                             </div>
                             
                             <div className="mt-3 text-xs text-muted-foreground">
-                              الحس��ب: {item.width} × {item.height} × {item.totalFaces} × {item.pricePerMeter} = {formatArabicNumber(item.totalPrice)}
+                              الحساب: {item.width} × {item.height} × {item.totalFaces} × {item.pricePerMeter} = {formatArabicNumber(item.totalPrice)}
                             </div>
                           </div>
                         ))}
