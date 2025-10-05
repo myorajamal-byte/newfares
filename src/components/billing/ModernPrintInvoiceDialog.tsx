@@ -75,7 +75,7 @@ interface ModernPrintInvoiceDialogProps {
 }
 
 const CURRENCIES = [
-  { code: 'LYD', name: 'دينار ��يبي', symbol: 'د.ل', writtenName: 'دينار ليبي' },
+  { code: 'LYD', name: 'دينار ليبي', symbol: 'د.ل', writtenName: 'دينار ليبي' },
   { code: 'USD', name: 'دولار أمريكي', symbol: '$', writtenName: 'دولار أمريكي' },
   { code: 'EUR', name: 'يورو', symbol: '€', writtenName: 'يورو' },
 ];
@@ -116,7 +116,7 @@ interface InvoiceSubmissionPayload {
   currencySymbol: string;
 }
 
-// ✅ دالة تنسيق الأرق��م العربية
+// ✅ دالة تنسيق الأرقام العربية
 const formatArabicNumber = (num: number): string => {
   if (isNaN(num) || num === null || num === undefined) return '0';
   
@@ -232,43 +232,55 @@ export default function ModernPrintInvoiceDialog({
   };
 
   // ✅ حساب الإجماليات الصحيح
-  const subtotal = useMemo(() => {
-    let calculatedTotal = 0;
-    
-    localPrintItems.forEach((item, index) => {
-      // ✅ الحساب الصحيح: العرض × الارتفاع × عدد الأوجه × سعر المتر
-      const width = Number(item.width) || 0;
-      const height = Number(item.height) || 0;
-      const totalFaces = Number(item.totalFaces) || 0;
-      const pricePerMeter = Number(item.pricePerMeter) || 0;
-      
-      const itemTotal = width * height * totalFaces * pricePerMeter;
-      
-      console.log(`Item ${index} (${item.size}): ${width} × ${height} × ${totalFaces} × ${pricePerMeter} = ${itemTotal}`);
-      
-      if (!isNaN(itemTotal) && itemTotal > 0) {
-        calculatedTotal += itemTotal;
-      }
-    });
-    
-    console.log('Final subtotal calculated:', calculatedTotal);
-    return calculatedTotal;
+  const subtotals = useMemo(() => {
+    return localPrintItems.reduce(
+      (acc, item, index) => {
+        const totalArea = Number(item.totalArea) || (Number(item.width) || 0) * (Number(item.height) || 0) * (Number(item.totalFaces) || 0);
+        const printRate = Number(item.pricePerMeter) || 0;
+        const installationRate = Number(item.installationPricePerMeter) || 0;
+
+        const itemPrintTotal = Number.isFinite(item.totalPrice) ? Number(item.totalPrice) : totalArea * printRate;
+        const itemInstallationTotal = Number.isFinite(item.installationTotal ?? NaN)
+          ? Number(item.installationTotal)
+          : totalArea * installationRate;
+
+        console.log(`Item ${index} (${item.size}) totals => print: ${itemPrintTotal}, installation: ${itemInstallationTotal}`);
+
+        return {
+          print: acc.print + (isNaN(itemPrintTotal) ? 0 : itemPrintTotal),
+          installation: acc.installation + (isNaN(itemInstallationTotal) ? 0 : itemInstallationTotal)
+        };
+      },
+      { print: 0, installation: 0 }
+    );
   }, [localPrintItems]);
+
+  const combinedSubtotal = useMemo(() => subtotals.print + subtotals.installation, [subtotals]);
+
+  const selectedSubtotal = useMemo(() => {
+    if (invoiceType === 'print_only') {
+      return subtotals.print;
+    }
+    if (invoiceType === 'installation_only') {
+      return subtotals.installation;
+    }
+    return combinedSubtotal;
+  }, [invoiceType, subtotals, combinedSubtotal]);
 
   const discountAmount = useMemo(() => {
     if (discountType === 'percentage') {
-      return (subtotal * discount) / 100;
+      return (selectedSubtotal * discount) / 100;
     }
     return discount;
-  }, [subtotal, discount, discountType]);
+  }, [selectedSubtotal, discount, discountType]);
 
   const total = useMemo(() => {
-    let finalTotal = subtotal - discountAmount;
+    let finalTotal = selectedSubtotal - discountAmount;
     if (includeAccountBalance && accountPayments > 0) {
       finalTotal -= accountPayments;
     }
     return Math.max(0, finalTotal);
-  }, [subtotal, discountAmount, includeAccountBalance, accountPayments]);
+  }, [selectedSubtotal, discountAmount, includeAccountBalance, accountPayments]);
 
   useEffect(() => {
     if (open) {
@@ -475,7 +487,7 @@ export default function ModernPrintInvoiceDialog({
     setLocalPrintItems(updatedItems);
   };
 
-  // ✅ دالة طباعة أمر الطباعة (بدون أ��عار مع حقول A/B)
+  // ✅ دالة طباعة أمر الطباعة (بدون أسعار مع حقول A/B)
   const handlePrintWorkOrder = () => {
     if (localPrintItems.length === 0) {
       toast.error('لا توجد عناصر للطباعة');
@@ -1219,7 +1231,7 @@ export default function ModernPrintInvoiceDialog({
               
               <div class="footer">
                 شكراً لتعاملكم معنا | Thank you for your business<br>
-                هذ�� فاتورة إلكترونية ولا تحتاج إلى ختم أو توقيع
+                هذه فاتورة إلكترونية ولا تحتاج إلى ختم أو توقيع
               </div>
             </div>
             
@@ -1314,7 +1326,7 @@ export default function ModernPrintInvoiceDialog({
                   <th className="border border-border p-3 text-center font-bold">إجمالي الأوجه</th>
                   <th className="border border-border p-3 text-center font-bold">الأبعاد (م)</th>
                   <th className="border border-border p-3 text-center font-bold">المساحة/الوجه</th>
-                  <th className="border border-border p-3 text-center font-bold">��عر المتر</th>
+                  <th className="border border-border p-3 text-center font-bold">����عر المتر</th>
                   <th className="border border-border p-3 text-center font-bold">إجمالي السعر</th>
                 </tr>
               </thead>
@@ -1453,7 +1465,7 @@ export default function ModernPrintInvoiceDialog({
                   <CardContent className="space-y-4">
                     <div className="expenses-form-grid gap-4">
                       <div>
-                        <label className="expenses-form-label mb-2 block text-sm">رقم الفاتورة</label>
+                        <label className="expenses-form-label mb-2 block text-sm">رقم ��لفاتورة</label>
                         <Input
                           value={invoiceNumber}
                           readOnly
