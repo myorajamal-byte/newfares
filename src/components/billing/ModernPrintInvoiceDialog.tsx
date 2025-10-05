@@ -69,8 +69,9 @@ interface ModernPrintInvoiceDialogProps {
   includeAccountBalance: boolean;
   onIncludeAccountBalance: (include: boolean) => void;
   accountPayments: number;
-  onPrintInvoice: () => void;
-  onSaveInvoice: () => void;
+  onPrintInvoice?: (payload: InvoiceSubmissionPayload) => void;
+  onSaveInvoice: (payload: InvoiceSubmissionPayload) => void;
+  onInvoiceTypeChange?: (invoiceType: InvoiceTypeValue) => void;
 }
 
 const CURRENCIES = [
@@ -439,7 +440,7 @@ export default function ModernPrintInvoiceDialog({
     try {
       const testWindow = window.open('', '_blank', 'width=1,height=1');
       if (!testWindow || testWindow.closed || typeof testWindow.closed === 'undefined') {
-        toast.error('يرجى السماح بالنوافذ المنبثقة في المتصفح لتمكين الطباعة');
+        toast.error('يرجى السماح با��نوافذ المنبثقة في المتصفح لتمكين الطباعة');
         return;
       }
       testWindow.close();
@@ -780,7 +781,7 @@ export default function ModernPrintInvoiceDialog({
       const printWindow = window.open('', '_blank', windowFeatures);
 
       if (!printWindow) {
-        throw new Error('فشل في فتح نافذة الطباعة. يرجى التحقق من إعدادات المتصفح وا��سماح بالنوافذ المنبثقة.');
+        throw new Error('فشل في فتح نافذة الطباعة. يرجى التحقق من إعدادات المتصفح والسماح بالنوافذ المنبثقة.');
       }
 
       printWindow.document.title = fileName;
@@ -1196,7 +1197,7 @@ export default function ModernPrintInvoiceDialog({
           throw new Error('فشل في فتح نافذة الطباعة. يرجى التحقق من إعدادات المتصفح والسماح بالنوافذ المنبثقة.');
         }
 
-        // ✅ تعيين عنوان النافذة مع معلوما�� العميل والعقود والتاريخ
+        // ✅ تعيين عنوان النافذة مع معلومات العميل والعقود والتاريخ
         printWindow.document.title = fileName;
 
         printWindow.document.open();
@@ -1208,7 +1209,7 @@ export default function ModernPrintInvoiceDialog({
       } catch (error) {
         console.error('Error in print invoice:', error);
         const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
-        toast.error(`حدث خطأ أثناء تحضير الفاتورة للطباعة: ${errorMessage}`);
+        toast.error(`ح��ث خطأ أثناء تحضير الفاتورة للطباعة: ${errorMessage}`);
       }
     };
 
@@ -1697,7 +1698,7 @@ export default function ModernPrintInvoiceDialog({
               disabled={localPrintItems.length === 0}
             >
               <Printer className="h-4 w-4" />
-              طباعة الفاتورة
+              طباعة ا��فاتورة
             </Button>
           </div>
         </div>
