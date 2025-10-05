@@ -244,8 +244,9 @@ export default function ModernPrintInvoiceDialog({
       setInvoiceDate(new Date().toISOString().slice(0, 10));
       setNotes('');
       setDiscount(0);
+      setInvoiceType('print_only');
       setLocalPrintItems([]);
-      
+
       // ✅ جلب بيانات الأحجام عند فتح النافذة
       fetchSizeData();
     }
@@ -396,7 +397,7 @@ export default function ModernPrintInvoiceDialog({
     handleContractToggle(contractNumber);
   };
 
-  // ✅ دالة تحديث العناصر مع الحساب الصحيح
+  // ✅ دالة تحديث ��لعناصر مع الحساب الصحيح
   const handlePrintItemUpdate = (index: number, field: keyof PrintItem, value: number) => {
     const updatedItems = [...localPrintItems];
     const item = { ...updatedItems[index] };
@@ -706,7 +707,7 @@ export default function ModernPrintInvoiceDialog({
               <div class="work-order-info">
                 <div class="work-order-title">أمر طباعة</div>
                 <div class="work-order-details">
-                  رقم الأمر: ${invoiceNumber}<br>
+                  رقم الأ��ر: ${invoiceNumber}<br>
                   التاريخ: ${formattedDate}
                 </div>
               </div>
@@ -1105,7 +1106,7 @@ export default function ModernPrintInvoiceDialog({
                 <div class="customer-details">
                   <strong>الاسم:</strong> ${customerName}<br>
                   <strong>العقود المرتبطة:</strong> ${selectedContracts.join(', ')}<br>
-                  <strong>تاريخ الفاتورة:</strong> ${formattedDate}
+                  <strong>تاريخ الفا��ورة:</strong> ${formattedDate}
                 </div>
               </div>
               
@@ -1211,7 +1212,7 @@ export default function ModernPrintInvoiceDialog({
 
       } catch (error) {
         console.error('Error in print invoice:', error);
-        const errorMessage = error instanceof Error ? error.message : 'خطأ غير م��روف';
+        const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
         toast.error(`حدث خطأ أثناء تحضير الفاتورة للطباعة: ${errorMessage}`);
       }
     };
@@ -1594,7 +1595,7 @@ export default function ModernPrintInvoiceDialog({
                                 />
                               </div>
                               <div>
-                                <label className="block text-xs text-muted-foreground mb-2">إجمالي ال��وجه</label>
+                                <label className="block text-xs text-muted-foreground mb-2">إجمالي الأوجه</label>
                                 <Input
                                   type="number"
                                   value={item.totalFaces}
