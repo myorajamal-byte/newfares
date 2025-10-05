@@ -88,7 +88,7 @@ const INVOICE_TYPES: InvoiceTypeOption[] = [
   },
   {
     value: 'installation_only',
-    label: 'فاتورة تركيب فقط',
+    label: 'فاتورة ترك��ب فقط',
     description: 'تشمل تكلفة التركيب فقط لكل لوحة.'
   },
   {
@@ -165,7 +165,7 @@ export default function ModernPrintInvoiceDialog({
   const [sizeDimensionsMap, setSizeDimensionsMap] = useState<{ [key: string]: { width: number; height: number } }>({});
   const [sizePricingMap, setSizePricingMap] = useState<{ [key: string]: { printPrice: number; installationPrice: number } }>({});
 
-  // ✅ جلب بيانات الأحجام من قاعدة البيانات مع الأبعاد
+  // ✅ جلب بيانات الأحجام من قاعدة البي��نات مع الأبعاد
   const fetchSizeData = async () => {
     try {
       const { data: sizesData, error } = await supabase
@@ -385,7 +385,7 @@ export default function ModernPrintInvoiceDialog({
     if (open && Object.keys(sizeDimensionsMap).length > 0) {
       getBillboardsFromContracts(selectedContracts);
     }
-  }, [selectedContracts, open, contracts, sizeDimensionsMap]);
+  }, [selectedContracts, open, contracts, sizeDimensionsMap, sizePricingMap]);
 
   const handleContractToggle = (contractNumber: string) => {
     const isSelected = selectedContracts.includes(contractNumber);
@@ -810,7 +810,7 @@ export default function ModernPrintInvoiceDialog({
 
   const handlePrint = () => {
     if (localPrintItems.length === 0) {
-      toast.error('لا تو��د عناصر للطباعة');
+      toast.error('لا توجد عناصر للطباعة');
       return;
     }
 
@@ -1279,7 +1279,7 @@ export default function ModernPrintInvoiceDialog({
                   <th className="border border-border p-3 text-center font-bold">إجمالي الأوجه</th>
                   <th className="border border-border p-3 text-center font-bold">الأبعاد (م)</th>
                   <th className="border border-border p-3 text-center font-bold">المساحة/الوجه</th>
-                  <th className="border border-border p-3 text-center font-bold">سعر المتر</th>
+                  <th className="border border-border p-3 text-center font-bold">��عر المتر</th>
                   <th className="border border-border p-3 text-center font-bold">إجمالي السعر</th>
                 </tr>
               </thead>
