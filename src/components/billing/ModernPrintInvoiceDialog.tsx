@@ -383,6 +383,374 @@ export default function ModernPrintInvoiceDialog({
     setLocalPrintItems(updatedItems);
   };
 
+  // ✅ دالة طباعة أمر الطباعة (بدون أسعار مع حقول A/B)
+  const handlePrintWorkOrder = () => {
+    if (localPrintItems.length === 0) {
+      toast.error('لا توجد عناصر للطباعة');
+      return;
+    }
+
+    try {
+      const testWindow = window.open('', '_blank', 'width=1,height=1');
+      if (!testWindow || testWindow.closed || typeof testWindow.closed === 'undefined') {
+        toast.error('يرجى السماح بالنوافذ المنبثقة في المتصفح لتمكين الطباعة');
+        return;
+      }
+      testWindow.close();
+
+      const currentDate = new Date(invoiceDate);
+      const formattedDate = currentDate.toLocaleDateString('ar-LY');
+
+      const contractsList = selectedContracts.join('-');
+      const dateFormatted = currentDate.toISOString().slice(0, 10).replace(/-/g, '_');
+      const customerNameForFile = customerName.replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_');
+      const fileName = `أمر_طباعة_${customerNameForFile}_عقود_${contractsList}_${dateFormatted}`;
+
+      const FIXED_ROWS = 10;
+      const displayItems = [...localPrintItems];
+
+      while (displayItems.length < FIXED_ROWS) {
+        displayItems.push({
+          size: '',
+          quantity: '',
+          faces: '',
+          totalFaces: '',
+          area: '',
+          width: '',
+          height: ''
+        } as any);
+      }
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${fileName}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap');
+
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+
+            html, body {
+              width: 210mm;
+              height: 297mm;
+              font-family: 'Noto Sans Arabic', Arial, sans-serif;
+              direction: rtl;
+              text-align: right;
+              background: white;
+              color: #000;
+              font-size: 12px;
+              line-height: 1.4;
+              overflow: hidden;
+            }
+
+            .invoice-container {
+              width: 210mm;
+              height: 297mm;
+              padding: 15mm;
+              display: flex;
+              flex-direction: column;
+            }
+
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              margin-bottom: 30px;
+              border-bottom: 2px solid #000;
+              padding-bottom: 20px;
+            }
+
+            .work-order-info {
+              text-align: left;
+              direction: ltr;
+              order: 2;
+            }
+
+            .work-order-title {
+              font-size: 28px;
+              font-weight: bold;
+              color: #000;
+              margin-bottom: 10px;
+            }
+
+            .work-order-details {
+              font-size: 12px;
+              color: #666;
+              line-height: 1.6;
+            }
+
+            .company-info {
+              display: flex;
+              flex-direction: column;
+              align-items: flex-end;
+              text-align: right;
+              order: 1;
+            }
+
+            .company-logo {
+              max-width: 400px;
+              height: auto;
+              object-fit: contain;
+              margin-bottom: 5px;
+              display: block;
+              margin-right: 0;
+            }
+
+            .company-details {
+              font-size: 12px;
+              color: #666;
+              line-height: 1.6;
+              font-weight: 400;
+              text-align: right;
+            }
+
+            .customer-info {
+              background: #f8f9fa;
+              padding: 20px;
+              border-radius: 0;
+              margin-bottom: 25px;
+              border-right: 4px solid #000;
+            }
+
+            .customer-title {
+              font-size: 16px;
+              font-weight: bold;
+              margin-bottom: 10px;
+              color: #000;
+            }
+
+            .customer-details {
+              font-size: 13px;
+              line-height: 1.6;
+            }
+
+            .items-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 25px;
+              table-layout: fixed;
+            }
+
+            .items-table th {
+              background: #000;
+              color: white;
+              padding: 12px 8px;
+              text-align: center;
+              font-weight: bold;
+              border: 1px solid #000;
+              font-size: 11px;
+              height: 40px;
+            }
+
+            .items-table td {
+              padding: 10px 8px;
+              text-align: center;
+              border: 1px solid #ddd;
+              font-size: 10px;
+              vertical-align: middle;
+              height: 35px;
+            }
+
+            .items-table tbody tr:nth-child(even) {
+              background: #f8f9fa;
+            }
+
+            .items-table tbody tr:hover {
+              background: #e9ecef;
+            }
+
+            .items-table tbody tr.empty-row {
+              background: white;
+            }
+
+            .items-table tbody tr.empty-row:nth-child(even) {
+              background: #f8f9fa;
+            }
+
+            .design-face-input {
+              width: 40px;
+              height: 30px;
+              border: 1px solid #000;
+              text-align: center;
+              display: inline-block;
+              margin: 0 2px;
+            }
+
+            .footer {
+              margin-top: 25px;
+              text-align: center;
+              font-size: 11px;
+              color: #666;
+              border-top: 1px solid #ddd;
+              padding-top: 15px;
+            }
+
+            .printer-selection {
+              background: #fff3cd;
+              border: 2px solid #ffc107;
+              padding: 15px;
+              margin-bottom: 20px;
+              border-radius: 5px;
+            }
+
+            .printer-label {
+              font-size: 14px;
+              font-weight: bold;
+              margin-bottom: 8px;
+              color: #000;
+            }
+
+            .printer-input {
+              width: 100%;
+              padding: 10px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              font-size: 14px;
+              text-align: right;
+            }
+
+            @media print {
+              html, body {
+                width: 210mm !important;
+                height: 297mm !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                color-adjust: exact;
+              }
+
+              .invoice-container {
+                width: 210mm !important;
+                height: 297mm !important;
+                padding: 15mm !important;
+              }
+
+              @page {
+                size: A4 portrait;
+                margin: 0 !important;
+                padding: 0 !important;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="invoice-container">
+            <div class="header">
+              <div class="company-info">
+                <img src="/logofares.svg" alt="شعار الشركة" class="company-logo" onerror="this.style.display='none'">
+                <div class="company-details">
+                  طرابلس – طريق المطار، حي الزهور<br>
+                  هاتف: 0912612255
+                </div>
+              </div>
+
+              <div class="work-order-info">
+                <div class="work-order-title">أمر طباعة</div>
+                <div class="work-order-details">
+                  رقم الأمر: ${invoiceNumber}<br>
+                  التاريخ: ${formattedDate}
+                </div>
+              </div>
+            </div>
+
+            <div class="printer-selection">
+              <div class="printer-label">اختيار المطبعة:</div>
+              <input type="text" class="printer-input" placeholder="اكتب اسم المطبعة هنا..." />
+            </div>
+
+            <div class="customer-info">
+              <div class="customer-title">بيانات العميل</div>
+              <div class="customer-details">
+                <strong>الاسم:</strong> ${customerName}<br>
+                <strong>العقود المرتبطة:</strong> ${selectedContracts.join(', ')}<br>
+                <strong>تاريخ الأمر:</strong> ${formattedDate}
+              </div>
+            </div>
+
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th style="width: 6%">#</th>
+                  <th style="width: 22%">المقاس</th>
+                  <th style="width: 10%">عدد اللوحات</th>
+                  <th style="width: 10%">أوجه/لوحة</th>
+                  <th style="width: 10%">إجمالي الأوجه</th>
+                  <th style="width: 14%">الأبعاد (م)</th>
+                  <th style="width: 14%">المساحة/الوجه</th>
+                  <th style="width: 14%">التصميم وجه</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${displayItems.map((item, index) => {
+                  const isEmpty = !item.size;
+
+                  return `
+                    <tr class="${isEmpty ? 'empty-row' : ''}">
+                      <td>${isEmpty ? '' : index + 1}</td>
+                      <td style="text-align: right; padding-right: 8px;">
+                        ${isEmpty ? '' : `لوحة إعلانية مقاس ${item.size}`}
+                      </td>
+                      <td>${isEmpty ? '' : (typeof item.quantity === 'number' ? formatArabicNumber(item.quantity) : item.quantity)}</td>
+                      <td>${isEmpty ? '' : (typeof item.faces === 'number' ? item.faces : item.faces)}</td>
+                      <td>${isEmpty ? '' : (typeof item.totalFaces === 'number' ? formatArabicNumber(item.totalFaces) : item.totalFaces)}</td>
+                      <td>${isEmpty ? '' : (typeof item.width === 'number' && typeof item.height === 'number' ? `${item.width} × ${item.height}` : '')}</td>
+                      <td>${isEmpty ? '' : (typeof item.area === 'number' ? `${item.area.toFixed(2)} م²` : item.area)}</td>
+                      <td>
+                        ${isEmpty ? '' : '<span class="design-face-input">A</span> <span class="design-face-input">B</span>'}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+
+            <div class="footer">
+              هذا أمر طباعة ولا يحتوي على أسعار | ملاحظة: حقل "التصميم وجه" يستخدم لتحديد نوع التصميم (A أو B)
+            </div>
+          </div>
+
+          <script>
+            window.addEventListener('load', function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+              }, 500);
+            });
+          </script>
+        </body>
+        </html>
+      `;
+
+      const windowFeatures = 'width=1200,height=800,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no';
+      const printWindow = window.open('', '_blank', windowFeatures);
+
+      if (!printWindow) {
+        throw new Error('فشل في فتح نافذة الطباعة. يرجى التحقق من إعدادات المتصفح والسماح بالنوافذ المنبثقة.');
+      }
+
+      printWindow.document.title = fileName;
+      printWindow.document.open();
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      toast.success('تم فتح أمر الطباعة بنجاح!');
+
+    } catch (error) {
+      console.error('Error in print work order:', error);
+      const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
+      toast.error(`حدث خطأ أثناء تحضير أمر الطباعة: ${errorMessage}`);
+    }
+  };
+
   const handlePrint = () => {
     if (localPrintItems.length === 0) {
       toast.error('لا توجد عناصر للطباعة');
@@ -1267,6 +1635,15 @@ export default function ModernPrintInvoiceDialog({
             >
               <Save className="h-4 w-4" />
               حفظ في الحساب
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handlePrintWorkOrder}
+              className="expenses-action-btn text-sm px-6 py-2 border-blue-500 text-blue-600 hover:bg-blue-50"
+              disabled={localPrintItems.length === 0}
+            >
+              <FileText className="h-4 w-4" />
+              أمر طباعة (بدون أسعار)
             </Button>
             <Button
               onClick={handlePrint}

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer } from 'lucide-react';
 import { ContractData } from '@/lib/pdfGenerator';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ContractPrintDialogProps {
   contract: ContractData;
@@ -11,6 +12,34 @@ interface ContractPrintDialogProps {
 
 export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [sizeOrderMap, setSizeOrderMap] = useState<{ [key: string]: number }>({});
+
+  // Fetch size order data from database
+  useEffect(() => {
+    const fetchSizeData = async () => {
+      try {
+        const { data: sizesData, error } = await supabase
+          .from('sizes')
+          .select('name, sort_order')
+          .order('sort_order', { ascending: true });
+
+        if (!error && sizesData) {
+          const orderMap: { [key: string]: number } = {};
+          sizesData.forEach(size => {
+            orderMap[size.name] = size.sort_order || 999;
+          });
+          setSizeOrderMap(orderMap);
+          console.log('Size order map loaded:', orderMap);
+        } else {
+          console.warn('Failed to load size data:', error);
+        }
+      } catch (error) {
+        console.error('Error fetching size data:', error);
+      }
+    };
+
+    fetchSizeData();
+  }, []);
 
   // Function to get billboard image from contract
   const getBillboardImage = (contract: ContractData): string => {
@@ -109,10 +138,19 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
           if (lat != null && lng != null) coords = `${lat},${lng}`;
         }
         const mapLink = coords ? `https://www.google.com/maps?q=${encodeURIComponent(coords)}` : '#';
-        return { id, image, municipality, district, landmark, size, faces, price, mapLink };
+        
+        // Add sort order for sorting
+        const sortOrder = sizeOrderMap[size] || 999;
+        
+        return { id, image, municipality, district, landmark, size, faces, price, mapLink, sortOrder };
       };
 
       const normalizedRows = billboards.map(normalizeBillboard);
+      
+      // ✅ FIXED: Sort billboards by sort_order from sizes table
+      normalizedRows.sort((a, b) => a.sortOrder - b.sortOrder);
+      console.log('Billboards sorted by size order:', normalizedRows.map(r => ({ size: r.size, sortOrder: r.sortOrder })));
+      
       const ROWS_PER_PAGE = 12; // fits with image thumbnails comfortably
 
       const tablePagesHtml = normalizedRows.length
@@ -499,7 +537,7 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
                 dominant-baseline="middle"
                 style="direction: rtl; text-align: center"
               >
-                الأخير تكاليف التغيير الناتجة عن الأحوال ال��وية أو الحوادث.
+                الأخير تكاليف التغيير الناتجة عن الأحوال الجوية أو الحوادث.
               </text>
 
               <!-- البند الثالث -->
@@ -565,7 +603,7 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
                 dominant-baseline="middle"
                 style="direction: rtl; text-align: center"
               >
-                لايجوز للطرف الثاني التنازل عن العقد أو التعامل مع جهات أخرى دون موافقة الطرف الأول، الذي يحتفظ ��حق.
+                لايجوز للطرف الثاني التنازل عن العقد أو التعامل مع جهات أخرى دون موافقة الطرف الأول، الذي يحتفظ بحق.
               </text>
               <text
                 x="1530"
@@ -744,6 +782,7 @@ export function ContractPrintDialog({ contract, trigger }: ContractPrintDialogPr
               <li>تفاصيل العقد والعميل</li>
               <li>خلفية مصممة للطباعة بنفس تصميم main6</li>
               <li>خط Doran العربي الأنيق</li>
+              <li>ترتيب اللوحات حسب المقاس من قاعدة البيانات</li>
             </ul>
           </div>
           

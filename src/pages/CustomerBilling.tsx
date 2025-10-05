@@ -51,6 +51,7 @@ export default function CustomerBilling() {
   const params = new URLSearchParams(location.search);
   const paramId = params.get('id') || '';
   const paramName = params.get('name') || '';
+  const modernPrintFlag = params.get('modernPrint');
 
   // Basic state
   const [customerId, setCustomerId] = useState<string>(paramId);
@@ -101,6 +102,16 @@ export default function CustomerBilling() {
   const [accountPaymentDate, setAccountPaymentDate] = useState<string>(()=> new Date().toISOString().slice(0,10));
   const [accountPaymentContract, setAccountPaymentContract] = useState('');
   const [accountPaymentToGeneral, setAccountPaymentToGeneral] = useState(true);
+
+  useEffect(() => {
+    if (modernPrintFlag) {
+      setPrintContractInvoiceOpen(true);
+      const cleanedParams = new URLSearchParams(location.search);
+      cleanedParams.delete('modernPrint');
+      const nextSearch = cleanedParams.toString();
+      navigate(`${location.pathname}${nextSearch ? `?${nextSearch}` : ''}`, { replace: true });
+    }
+  }, [location.pathname, location.search, modernPrintFlag, navigate]);
 
   // Initialize customer data
   useEffect(() => {
@@ -340,7 +351,7 @@ export default function CustomerBilling() {
     }, 0);
   }, [payments]);
   
-  // ✅ إصلاح حساب المتبقي - إظهار الرصيد السالب عندما يكون المدفوع أكثر من المستحق
+  // ✅ إصلاح حساب ال��تبقي - إظهار الرصيد السالب عندما يكون المدفوع أكثر من المستحق
   const balance = totalDebits - totalCredits;
 
   // ✅ إصلاح حساب رصيد الحساب العام - فقط المدفوعات العامة
@@ -447,7 +458,7 @@ export default function CustomerBilling() {
     setPrintItems(newItems);
   };
 
-  // ✅ تعديل الدالة لطباعة فاتورة الطباعة فقط (بدون العقد)
+  // ✅ تعديل الدالة ل��باعة فاتورة الطباعة فقط (بدون العقد)
   const printPrintingInvoiceOnly = async () => {
     if (selectedContractsForInv.length === 0) {
       toast.error('يرجى اختيار عقد واحد على الأقل');
@@ -736,7 +747,7 @@ export default function CustomerBilling() {
       <Dialog open={accountPaymentOpen} onOpenChange={setAccountPaymentOpen}>
         <DialogContent className="max-w-md expenses-dialog-content" dir="rtl">
           <DialogHeader className="border-b border-slate-600 pb-4">
-            <DialogTitle className="text-lg font-bold text-yellow-400 text-right">دفعة على الحساب</DialogTitle>
+            <DialogTitle className="text-lg font-bold text-yellow-400 text-right">دفع�� على الحساب</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div className="bg-slate-700 p-3 rounded-lg border border-slate-600">
@@ -905,7 +916,7 @@ export default function CustomerBilling() {
                   if (!amt || amt <= 0) { toast.error('المبلغ يجب أن يكون أكبر من صفر'); return; }
                   
                   if (!accountPaymentToGeneral && !accountPaymentContract) {
-                    toast.error('يرجى اختيار عقد');
+                    toast.error('يرجى اختي��ر عقد');
                     return;
                   }
                   

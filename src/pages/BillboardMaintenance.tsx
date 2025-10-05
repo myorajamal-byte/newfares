@@ -8,20 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { 
-  Wrench, 
-  Search, 
-  Plus, 
-  Calendar, 
-  AlertTriangle, 
-  CheckCircle, 
-  Clock, 
-  Settings,
-  FileText,
-  Printer,
-  Download,
-  Filter
-} from 'lucide-react';
+import { Wrench, Search, Plus, Calendar, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Clock, Settings, FileText, Printer, Download, Filter } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -248,392 +235,205 @@ export default function BillboardMaintenance() {
   // ✅ تقرير طباعة محسن مطابق لتقارير العقود
   const printMaintenanceReport = () => {
     const filteredBillboards = getFilteredBillboards();
-    
+
+    if (filteredBillboards.length === 0) {
+      toast({
+        title: 'لا توجد بيانات للطباعة',
+        description: 'يرجى التأكد من توفر لوحات ضمن نتائج الصيانة قبل الطباعة.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const normalizeBoard = (board: Billboard) => {
+      const id = String(board.ID ?? '').trim();
+      const name = board.Billboard_Name?.trim() || (id ? `لوحة ${id}` : 'لوحة غير معروفة');
+      const image = board.Image_URL?.trim() || '';
+      const municipality = board.Municipality?.trim() || '';
+      const district = board.District?.trim() || '';
+      const landmark = board.Nearest_Landmark?.trim() || '';
+      const size = board.Size?.trim() || '';
+      const rawFaces =
+        (board as Record<string, unknown>).Faces ??
+        (board as Record<string, unknown>)['Number_of_Faces'] ??
+        '';
+      const maintenanceType = board.maintenance_type?.trim() || '';
+      const faces = String(rawFaces ?? '').trim() || maintenanceType;
+      let coords = String(
+        (board as Record<string, unknown>).GPS_Coordinates ??
+          board.GPS_Link ??
+          (board as Record<string, unknown>).GPS ??
+          '',
+      ).trim();
+
+      if (coords && coords !== 'null' && coords !== 'undefined') {
+        if (!coords.startsWith('http')) {
+          coords = `https://www.google.com/maps?q=${encodeURIComponent(coords)}`;
+        }
+      } else {
+        const lat = (board as Record<string, unknown>).Latitude ?? (board as Record<string, unknown>).lat;
+        const lng = (board as Record<string, unknown>).Longitude ?? (board as Record<string, unknown>).lng;
+        if (lat != null && lng != null) {
+          coords = `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
+        } else {
+          coords = '';
+        }
+      }
+
+      const maintenanceStatus = board.maintenance_status === 'maintenance'
+        ? 'قيد الصيانة'
+        : board.maintenance_status === 'repair_needed'
+          ? 'تحتاج إصلاح'
+          : board.maintenance_status === 'out_of_service'
+            ? 'خارج الخدمة'
+            : 'غير محدد';
+
+      const priorityLabel = board.maintenance_priority === 'low'
+        ? 'منخفضة'
+        : board.maintenance_priority === 'normal'
+          ? 'عادية'
+          : board.maintenance_priority === 'high'
+            ? 'عالية'
+            : board.maintenance_priority === 'urgent'
+              ? 'عاجلة'
+              : 'غير محدد';
+
+      const lastMaintenanceDate = board.maintenance_date
+        ? new Date(board.maintenance_date).toLocaleDateString('ar-LY')
+        : '';
+
+      return {
+        id,
+        name,
+        image,
+        municipality,
+        district,
+        landmark,
+        size,
+        faces,
+        status: maintenanceStatus,
+        priority: priorityLabel,
+        lastMaintenanceDate,
+        mapLink: coords,
+      };
+    };
+
+    const normalizedBoards = filteredBillboards.map(normalizeBoard);
+    type NormalizedBoard = (typeof normalizedBoards)[number];
+
+    const START_Y = 63.53;
+    const ROW_H = 13.818;
+    const PAGE_H = 297;
+    const ROWS_PER_PAGE = Math.max(1, Math.floor((PAGE_H - START_Y) / ROW_H));
+
+    const tablePagesHtml = normalizedBoards
+      .reduce((pages: NormalizedBoard[][], row, index) => {
+        const pageIndex = Math.floor(index / ROWS_PER_PAGE);
+        if (!pages[pageIndex]) pages[pageIndex] = [];
+        pages[pageIndex].push(row);
+        return pages;
+      }, [] as NormalizedBoard[][])
+      .map(
+        (pageRows) => `
+              <div class="template-container page">
+                <img src="/bgc2.svg" alt="خلفية جدول اللوحات" class="template-image" onerror="console.warn('Failed to load bgc2.svg')" />
+                <div class="table-area">
+                  <table class="btable" dir="rtl">
+                    <colgroup>
+                      <col style="width:22mm" />
+                      <col style="width:22mm" />
+                      <col style="width:22mm" />
+                      <col style="width:22mm" />
+                      <col style="width:50mm" />
+                      <col style="width:20mm" />
+                      <col style="width:20mm" />
+                      <col style="width:22mm" />
+                    </colgroup>
+                    <tbody>
+                      ${pageRows
+                        .map(
+                          (row) => `
+                          <tr>
+                            <td class="c-name">${row.name || row.id}</td>
+                            <td class="c-img">${
+                              row.image
+                                ? `<img src="${row.image}" alt="صورة اللوحة" onerror="this.style.display='none'" />`
+                                : ''
+                            }</td>
+                            <td>${row.municipality}</td>
+                            <td>${row.district}</td>
+                            <td>${row.landmark}</td>
+                            <td>${row.size || '-'}${row.status ? `<div class="cell-sub">${row.status}</div>` : ''}</td>
+                            <td>${row.priority}${row.faces ? `<div class="cell-sub">${row.faces}</div>` : ''}</td>
+                            <td>${row.mapLink
+                              ? `<a href="${row.mapLink}" target="_blank" rel="noopener">الخريطة</a>${
+                                  row.lastMaintenanceDate
+                                    ? `<div class="cell-sub">${row.lastMaintenanceDate}</div>`
+                                    : ''
+                                }`
+                              : row.lastMaintenanceDate}
+                            </td>
+                          </tr>`
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            `,
+      )
+      .join('');
+
+    const html = `<!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <title>تقرير صيانة اللوحات</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap');
+            @font-face { font-family: 'Doran'; src: url('/Doran-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; font-display: swap; }
+            @font-face { font-family: 'Doran'; src: url('/Doran-Bold.otf') format('opentype'); font-weight: 700; font-style: normal; font-display: swap; }
+            * { margin: 0 !important; padding: 0 !important; box-sizing: border-box; }
+            html, body { width: 100% !important; height: 100% !important; overflow: hidden; font-family: 'Noto Sans Arabic','Doran','Arial Unicode MS',Arial,sans-serif; direction: rtl; text-align: right; background: #fff; color: #000; }
+            .template-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; display: block; }
+            .template-image { position: absolute; inset: 0; width: 100% !important; height: 100% !important; object-fit: cover; object-position: center; z-index: 1; display: block; }
+            .page { page-break-after: always; page-break-inside: avoid; }
+            .table-area { position: absolute; top: 63.53mm; left: 12.8765mm; right: 12.8765mm; z-index: 20; }
+            .btable { width: 100%; border-collapse: collapse; border-spacing: 0; font-size: 8px; font-family: 'Doran','Noto Sans Arabic','Arial Unicode MS',Arial,sans-serif; table-layout: fixed; border: 0.2mm solid #000; }
+            .btable tr { height: 13.818mm; }
+            .btable td { border: 0.2mm solid #000; padding: 0 1mm; vertical-align: middle; text-align: center; background: transparent; color: #000; white-space: normal; word-break: break-word; overflow: hidden; }
+            .btable td a { color: #0047AB; text-decoration: none; }
+            .cell-sub { margin-top: 2px; font-size: 7px; color: #333; }
+            .c-img img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
+            @media print { html, body { width: 210mm !important; min-height: 297mm !important; height: auto !important; margin:0 !important; padding:0 !important; overflow: visible !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .template-container { width: 210mm !important; height: 297mm !important; position: relative !important; }
+              .template-image { width: 210mm !important; height: 297mm !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              @page { size: A4; margin: 0 !important; padding: 0 !important; } .controls{display:none!important}
+            }
+            .controls{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:99}
+            .controls button{padding:8px 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;cursor:pointer}
+          </style>
+        </head>
+        <body>
+          ${tablePagesHtml}
+          <div class="controls"><button onclick="window.print()">طباعة</button></div>
+        </body>
+        </html>`;
+
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    if (!printWindow) {
+      toast({
+        title: 'تعذر فتح نافذة الطباعة',
+        description: 'يرجى السماح بالنوافذ المنبثقة للموقع ثم المحاولة مرة أخرى.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-    const reportHtml = `
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
-      <head>
-        <meta charset="UTF-8">
-        <title>تقرير صيانة اللوحات الطرقية</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap');
-          
-          @page {
-            size: A4;
-            margin: 15mm;
-          }
-          
-          body {
-            font-family: 'Noto Sans Arabic', Arial, sans-serif;
-            font-size: 11px;
-            line-height: 1.3;
-            color: #333;
-            direction: rtl;
-            text-align: right;
-            margin: 0;
-            padding: 0;
-            background: #f8f9fa;
-          }
-          
-          .contract-page {
-            background: white;
-            min-height: 100vh;
-            padding: 20px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-          }
-          
-          .header {
-            text-align: center;
-            margin-bottom: 25px;
-            border-bottom: 3px solid #FFD700;
-            padding-bottom: 15px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-radius: 8px;
-            padding: 20px;
-          }
-          
-          .company-logo {
-            width: 70px;
-            height: 70px;
-            margin: 0 auto 10px;
-            background: linear-gradient(135deg, #FFD700, #FFA500);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 20px;
-            font-weight: bold;
-            box-shadow: 0 4px 8px rgba(255, 215, 0, 0.3);
-          }
-          
-          .company-name {
-            font-size: 20px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 6px;
-          }
-          
-          .report-title {
-            font-size: 16px;
-            color: #666;
-            margin-bottom: 6px;
-            font-weight: 600;
-          }
-          
-          .report-date {
-            font-size: 11px;
-            color: #888;
-          }
-          
-          .billboard-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin: 20px 0;
-          }
-          
-          .billboard-card {
-            background: white;
-            border: 2px solid #e9ecef;
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            position: relative;
-            overflow: hidden;
-          }
-          
-          .billboard-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #FFD700, #FFA500);
-          }
-          
-          .billboard-image {
-            width: 100%;
-            height: 120px;
-            object-fit: cover;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            border: 2px solid #e9ecef;
-          }
-          
-          .billboard-placeholder {
-            width: 100%;
-            height: 120px;
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-            border-radius: 8px;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #6c757d;
-            font-size: 12px;
-            border: 2px dashed #dee2e6;
-          }
-          
-          .billboard-title {
-            font-size: 14px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 8px;
-            text-align: center;
-          }
-          
-          .billboard-info {
-            font-size: 10px;
-            line-height: 1.4;
-          }
-          
-          .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 4px;
-            padding: 2px 0;
-          }
-          
-          .info-label {
-            font-weight: bold;
-            color: #555;
-            min-width: 60px;
-          }
-          
-          .info-value {
-            color: #333;
-            text-align: left;
-          }
-          
-          .status-badge {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 9px;
-            font-weight: bold;
-            text-align: center;
-          }
-          
-          .status-maintenance { background-color: #fff3cd; color: #856404; }
-          .status-repair { background-color: #f8d7da; color: #721c24; }
-          .status-out-of-service { background-color: #f1f1f1; color: #6c757d; }
-          
-          .priority-low { background-color: #d1ecf1; color: #0c5460; }
-          .priority-normal { background-color: #d4edda; color: #155724; }
-          .priority-high { background-color: #fff3cd; color: #856404; }
-          .priority-urgent { background-color: #f8d7da; color: #721c24; }
-          
-          .maintenance-notes {
-            background: #f8f9fa;
-            padding: 8px;
-            border-radius: 6px;
-            margin-top: 8px;
-            font-size: 9px;
-            border-right: 3px solid #FFD700;
-          }
-          
-          .stats-summary {
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            text-align: center;
-          }
-          
-          .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 10px;
-          }
-          
-          .stat-item {
-            background: white;
-            padding: 8px;
-            border-radius: 6px;
-            text-align: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          }
-          
-          .stat-number {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 2px;
-          }
-          
-          .stat-label {
-            font-size: 9px;
-            color: #666;
-          }
-          
-          .footer {
-            margin-top: 30px;
-            padding-top: 15px;
-            border-top: 2px solid #e9ecef;
-            text-align: center;
-            font-size: 9px;
-            color: #666;
-          }
-          
-          .signature-section {
-            margin-top: 30px;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-          }
-          
-          .signature-box {
-            text-align: center;
-            padding: 10px;
-          }
-          
-          .signature-line {
-            border-top: 1px solid #333;
-            margin-top: 30px;
-            padding-top: 5px;
-            font-size: 10px;
-          }
-          
-          @media print {
-            body { margin: 0; background: white; }
-            .contract-page { box-shadow: none; }
-            .no-print { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="contract-page">
-          <div class="header">
-            <div class="company-logo">ص</div>
-            <div class="company-name">شركة إدارة اللوحات الإعلانية</div>
-            <div class="report-title">تقرير صيانة اللوحات الطرقية</div>
-            <div class="report-date">تاريخ التقرير: ${new Date().toLocaleDateString('ar-LY', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}</div>
-          </div>
-
-          <div class="stats-summary">
-            <h3 style="margin: 0 0 10px 0; color: #333;">ملخص حالة اللوحات</h3>
-            <div class="stats-grid">
-              <div class="stat-item">
-                <div class="stat-number" style="color: #ffc107;">${billboards.filter(b => b.maintenance_status === 'maintenance').length}</div>
-                <div class="stat-label">قيد الصيانة</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-number" style="color: #dc3545;">${billboards.filter(b => b.maintenance_status === 'repair_needed').length}</div>
-                <div class="stat-label">تحتاج إصلاح</div>
-              </div>
-              <div class="stat-item">
-                <div class="stat-number" style="color: #6c757d;">${billboards.filter(b => b.maintenance_status === 'out_of_service').length}</div>
-                <div class="stat-label">خارج الخدمة</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="billboard-grid">
-            ${filteredBillboards.map((billboard, index) => `
-              <div class="billboard-card">
-                ${billboard.Image_URL ? 
-                  `<img src="${billboard.Image_URL}" alt="صورة اللوحة" class="billboard-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                   <div class="billboard-placeholder" style="display: none;">لا توجد صورة متاحة</div>` :
-                  `<div class="billboard-placeholder">لا توجد صورة متاحة</div>`
-                }
-                
-                <div class="billboard-title">${billboard.Billboard_Name || `لوحة رقم ${billboard.ID}`}</div>
-                
-                <div class="billboard-info">
-                  <div class="info-row">
-                    <span class="info-label">الموقع:</span>
-                    <span class="info-value">${billboard.Nearest_Landmark || 'غير محدد'}</span>
-                  </div>
-                  <div class="info-row">
-                    <span class="info-label">البلدية:</span>
-                    <span class="info-value">${billboard.Municipality || 'غير محدد'}</span>
-                  </div>
-                  <div class="info-row">
-                    <span class="info-label">المقاس:</span>
-                    <span class="info-value">${billboard.Size || 'غير محدد'}</span>
-                  </div>
-                  <div class="info-row">
-                    <span class="info-label">الحالة:</span>
-                    <span class="info-value">
-                      <span class="status-badge status-${billboard.maintenance_status}">
-                        ${billboard.maintenance_status === 'maintenance' ? 'قيد الصيانة' :
-                          billboard.maintenance_status === 'repair_needed' ? 'تحتاج إصلاح' : 'خارج الخدمة'}
-                      </span>
-                    </span>
-                  </div>
-                  <div class="info-row">
-                    <span class="info-label">الأولوية:</span>
-                    <span class="info-value">
-                      <span class="priority-${billboard.maintenance_priority}">
-                        ${billboard.maintenance_priority === 'low' ? 'منخفضة' :
-                          billboard.maintenance_priority === 'normal' ? 'عادية' :
-                          billboard.maintenance_priority === 'high' ? 'عالية' : 'عاجلة'}
-                      </span>
-                    </span>
-                  </div>
-                  ${billboard.GPS_Link ? `
-                  <div class="info-row">
-                    <span class="info-label">الموقع:</span>
-                    <span class="info-value" style="font-size: 8px; word-break: break-all;">${billboard.GPS_Link}</span>
-                  </div>
-                  ` : ''}
-                  <div class="info-row">
-                    <span class="info-label">آخر صيانة:</span>
-                    <span class="info-value">${billboard.maintenance_date ? new Date(billboard.maintenance_date).toLocaleDateString('ar-LY') : 'لا يوجد'}</span>
-                  </div>
-                  ${billboard.maintenance_cost ? `
-                  <div class="info-row">
-                    <span class="info-label">التكلفة:</span>
-                    <span class="info-value">${billboard.maintenance_cost.toLocaleString()} د.ل</span>
-                  </div>
-                  ` : ''}
-                </div>
-                
-                ${billboard.maintenance_notes ? `
-                <div class="maintenance-notes">
-                  <strong>ملاحظات الصيانة:</strong><br>
-                  ${billboard.maintenance_notes}
-                </div>
-                ` : ''}
-              </div>
-            `).join('')}
-          </div>
-
-          <div class="signature-section">
-            <div class="signature-box">
-              <div class="signature-line">مسؤول الصيانة</div>
-            </div>
-            <div class="signature-box">
-              <div class="signature-line">مدير العمليات</div>
-            </div>
-            <div class="signature-box">
-              <div class="signature-line">المدير العام</div>
-            </div>
-          </div>
-
-          <div class="footer">
-            <p><strong>شركة إدارة اللوحات الإعلانية</strong></p>
-            <p>هاتف: +218-XXX-XXXX | البريد الإلكتروني: info@billboards.ly</p>
-            <p>تم إنشاء هذا التقرير تلقائياً من نظام إدارة اللوحات الإعلانية - الإصدار 2.0</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    printWindow.document.write(reportHtml);
+    printWindow.document.write(html);
     printWindow.document.close();
-    printWindow.print();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 600);
   };
 
   // إزالة اللوحة من قائمة الصيانة عند تغيير حالتها إلى "تعمل بشكل طبيعي"
@@ -685,7 +485,7 @@ export default function BillboardMaintenance() {
         <CardContent className="p-6">
           <div className="flex items-center justify-center h-32">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <span className="mr-2">جاري تحميل بيانات الصيانة...</span>
+            <span className="mr-2">جاري تحميل بيان��ت الصيانة...</span>
           </div>
         </CardContent>
       </Card>
@@ -812,7 +612,7 @@ export default function BillboardMaintenance() {
         </CardContent>
       </Card>
 
-      {/* جدول اللوحات */}
+      {/* جدول اللوح��ت */}
       <Card>
         <CardHeader>
           <CardTitle>اللوحات التي تحتاج صيانة ({filteredBillboards.length})</CardTitle>
@@ -923,22 +723,36 @@ export default function BillboardMaintenance() {
 
             <div className="space-y-2">
               <Label htmlFor="maintenance-type">نوع الصيانة *</Label>
-              <Select
-                value={maintenanceForm.type}
-                onValueChange={(value) => setMaintenanceForm(prev => ({ ...prev, type: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="اختر نوع الصيانة" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="صيانة دورية">صيانة دورية</SelectItem>
-                  <SelectItem value="إصلاح">إصلاح</SelectItem>
-                  <SelectItem value="تنظيف">تنظيف</SelectItem>
-                  <SelectItem value="استبدال قطع">استبدال قطع</SelectItem>
-                  <SelectItem value="فحص">فحص</SelectItem>
-                  <SelectItem value="أخرى">أخرى</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={maintenanceForm.type}
+                  onValueChange={(value) => setMaintenanceForm(prev => ({ ...prev, type: value }))}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="اختر نوع الصيانة أو أدخل يدوياً" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="صيانة دورية">صيانة دورية</SelectItem>
+                    <SelectItem value="إصلاح">إصلاح</SelectItem>
+                    <SelectItem value="تنظيف">تنظيف</SelectItem>
+                    <SelectItem value="استبدال قطع">استبدال قطع</SelectItem>
+                    <SelectItem value="فحص">فحص</SelectItem>
+                    <SelectItem value="طباعة">طباعة</SelectItem>
+                    <SelectItem value="تركيب">تركيب</SelectItem>
+                    <SelectItem value="دهان">دهان</SelectItem>
+                    <SelectItem value="كهرباء">كهرباء</SelectItem>
+                    <SelectItem value="لحام">لحام</SelectItem>
+                    <SelectItem value="أخرى">أخرى</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="أو اكتب هنا..."
+                  value={maintenanceForm.type}
+                  onChange={(e) => setMaintenanceForm(prev => ({ ...prev, type: e.target.value }))}
+                  className="flex-1"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">اختر من القائمة أو اكتب نوع الصيانة يدوياً</p>
             </div>
 
             <div className="space-y-2">
@@ -983,7 +797,7 @@ export default function BillboardMaintenance() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="technician">اسم الفني</Label>
+              <Label htmlFor="technician">اسم الفن��</Label>
               <Input
                 id="technician"
                 placeholder="اسم الفني المسؤول"
