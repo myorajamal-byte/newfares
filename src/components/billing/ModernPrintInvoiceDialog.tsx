@@ -148,7 +148,8 @@ export default function ModernPrintInvoiceDialog({
   onIncludeAccountBalance,
   accountPayments,
   onPrintInvoice,
-  onSaveInvoice
+  onSaveInvoice,
+  onInvoiceTypeChange
 }: ModernPrintInvoiceDialogProps) {
   const [activeTab, setActiveTab] = useState<'setup' | 'preview'>('setup');
   const [currency, setCurrency] = useState(CURRENCIES[0]);
@@ -157,10 +158,12 @@ export default function ModernPrintInvoiceDialog({
   const [notes, setNotes] = useState('');
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
-  
+  const [invoiceType, setInvoiceType] = useState<InvoiceTypeValue>('print_only');
+
   const [localPrintItems, setLocalPrintItems] = useState<PrintItem[]>([]);
   const [sizeOrderMap, setSizeOrderMap] = useState<{ [key: string]: number }>({});
   const [sizeDimensionsMap, setSizeDimensionsMap] = useState<{ [key: string]: { width: number; height: number } }>({});
+  const [sizePricingMap, setSizePricingMap] = useState<{ [key: string]: { printPrice: number; installationPrice: number } }>({});
 
   // ✅ جلب بيانات الأحجام من قاعدة البيانات مع الأبعاد
   const fetchSizeData = async () => {
@@ -440,7 +443,7 @@ export default function ModernPrintInvoiceDialog({
     try {
       const testWindow = window.open('', '_blank', 'width=1,height=1');
       if (!testWindow || testWindow.closed || typeof testWindow.closed === 'undefined') {
-        toast.error('يرجى السماح با��نوافذ المنبثقة في المتصفح لتمكين الطباعة');
+        toast.error('يرجى السماح بالنوافذ المنبثقة في المتصفح لتمكين الطباعة');
         return;
       }
       testWindow.close();
@@ -1208,8 +1211,8 @@ export default function ModernPrintInvoiceDialog({
 
       } catch (error) {
         console.error('Error in print invoice:', error);
-        const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
-        toast.error(`ح��ث خطأ أثناء تحضير الفاتورة للطباعة: ${errorMessage}`);
+        const errorMessage = error instanceof Error ? error.message : 'خطأ غير م��روف';
+        toast.error(`حدث خطأ أثناء تحضير الفاتورة للطباعة: ${errorMessage}`);
       }
     };
 
@@ -1591,7 +1594,7 @@ export default function ModernPrintInvoiceDialog({
                                 />
                               </div>
                               <div>
-                                <label className="block text-xs text-muted-foreground mb-2">إجمالي الأوجه</label>
+                                <label className="block text-xs text-muted-foreground mb-2">إجمالي ال��وجه</label>
                                 <Input
                                   type="number"
                                   value={item.totalFaces}
@@ -1698,7 +1701,7 @@ export default function ModernPrintInvoiceDialog({
               disabled={localPrintItems.length === 0}
             >
               <Printer className="h-4 w-4" />
-              طباعة ا��فاتورة
+              طباعة الفاتورة
             </Button>
           </div>
         </div>
