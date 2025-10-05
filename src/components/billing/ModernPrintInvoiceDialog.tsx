@@ -20,6 +20,14 @@ import {
   X
 } from 'lucide-react';
 
+type InvoiceTypeValue = 'print_only' | 'installation_only' | 'print_and_installation';
+
+interface InvoiceTypeOption {
+  value: InvoiceTypeValue;
+  label: string;
+  description: string;
+}
+
 interface PrintItem {
   size: string;
   quantity: number;
@@ -27,8 +35,10 @@ interface PrintItem {
   totalFaces: number;
   area: number;
   pricePerMeter: number;
+  installationPricePerMeter?: number;
   totalArea: number;
   totalPrice: number;
+  installationTotal?: number;
   sortOrder: number;
   width: number;
   height: number;
@@ -671,7 +681,7 @@ export default function ModernPrintInvoiceDialog({
               <div class="customer-title">بيانات العميل</div>
               <div class="customer-details">
                 <strong>الاسم:</strong> ${customerName}<br>
-                <strong>العقود المرتبطة:</strong> ${selectedContracts.join(', ')}<br>
+                <strong>العقود ��لمرتبطة:</strong> ${selectedContracts.join(', ')}<br>
                 <strong>تاريخ الأمر:</strong> ${formattedDate}
               </div>
             </div>
@@ -1570,7 +1580,7 @@ export default function ModernPrintInvoiceDialog({
                             </div>
                             
                             <div className="mt-3 text-xs text-muted-foreground">
-                              الحساب: {item.width} × {item.height} × {item.totalFaces} × {item.pricePerMeter} = {formatArabicNumber(item.totalPrice)}
+                              الحس��ب: {item.width} × {item.height} × {item.totalFaces} × {item.pricePerMeter} = {formatArabicNumber(item.totalPrice)}
                             </div>
                           </div>
                         ))}
