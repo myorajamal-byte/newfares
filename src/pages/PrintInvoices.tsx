@@ -49,7 +49,7 @@ interface PrintItemRow {
 
 const invoiceTypeOptions = [
   { value: 'print_invoice', label: 'فاتورة العميل' },
-  { value: 'print_shop', label: 'فاتورة المطبعة' },
+  { value: 'print_shop', label: 'فاتورة المط��عة' },
   { value: 'work_order', label: 'أمر طباعة' },
 ] as const;
 
@@ -196,6 +196,32 @@ export const PrintInvoices = () => {
       toast.error('حدث خطأ في تحميل العقود');
     } finally {
       setContractsLoading(false);
+    }
+  };
+
+  const fetchPrintItems = async (invoiceId: string) => {
+    setPrintItems([]);
+    setPrintItemsError(null);
+    setPrintItemsLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('print_items')
+        .select('*')
+        .eq('invoice_id', invoiceId);
+
+      if (error) {
+        console.error(error);
+        setPrintItemsError('فشل في تحميل عناصر الطباعة');
+        return;
+      }
+
+      setPrintItems((data || []) as PrintItemRow[]);
+    } catch (error) {
+      console.error(error);
+      setPrintItemsError('حدث خطأ أثناء تحميل عناصر الطباعة');
+    } finally {
+      setPrintItemsLoading(false);
     }
   };
 
