@@ -49,7 +49,7 @@ interface PrintItemRow {
 
 const invoiceTypeOptions = [
   { value: 'print_invoice', label: 'فاتورة العميل' },
-  { value: 'print_shop', label: 'فاتورة المط��عة' },
+  { value: 'print_shop', label: 'فاتورة المطبعة' },
   { value: 'work_order', label: 'أمر طباعة' },
 ] as const;
 
@@ -212,7 +212,7 @@ export const PrintInvoices = () => {
 
       if (error) {
         console.error(error);
-        setPrintItemsError('فشل في تحميل عناصر الطباعة');
+        setPrintItemsError('فشل في تحميل عناصر الط��اعة');
         return;
       }
 
@@ -359,6 +359,7 @@ export const PrintInvoices = () => {
   const openDetails = (invoice: PrintInvoice) => {
     setSelectedInvoice(invoice);
     setDetailsDialogOpen(true);
+    fetchPrintItems(invoice.id);
   };
 
   const closeDetails = () => {
