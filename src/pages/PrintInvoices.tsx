@@ -60,6 +60,22 @@ const invoiceTypeLabels = invoiceTypeOptions.reduce<Record<string, string>>((acc
 
 const defaultInvoiceType = 'print_invoice';
 
+const formatNumericValue = (value: unknown) => {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) {
+    return String(value);
+  }
+
+  return Math.abs(numeric % 1) < 1e-6 ? numeric.toLocaleString() : numeric.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
 interface CustomerOption {
   id: string;
   name: string;
