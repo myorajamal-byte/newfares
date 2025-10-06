@@ -306,7 +306,7 @@ export const PrintInvoices = () => {
 
   const handleSubmit = async () => {
     if (!formState.customerId || !formState.contractNumber || !formState.printerName) {
-      toast.error('يرجى إدخال بيانات العميل والعقد واسم المطبعة');
+      toast.error('يرجى إدخال بيانا�� العميل والعقد واسم المطبعة');
       return;
     }
 
@@ -377,7 +377,7 @@ export const PrintInvoices = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">فواتير الطباعة</h1>
-          <p className="text-muted-foreground">إ��ارة جميع فواتير الطباعة الخاصة بالعملاء وتصاميم الطباعة</p>
+          <p className="text-muted-foreground">إدارة جميع فواتير الطباعة الخاصة بالعملاء وتصاميم الطباعة</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -415,7 +415,8 @@ export const PrintInvoices = () => {
                   <TableHead className="text-right">رقم الفاتورة</TableHead>
                   <TableHead className="text-right">العميل</TableHead>
                   <TableHead className="text-right">رقم العقد</TableHead>
-                  <TableHead className="text-right">اسم المطبعة</TableHead>
+                  <TableHead className="text-right">نوع الفاتورة</TableHead>
+                  <TableHead className="text-right">اسم ��لمطبعة</TableHead>
                   <TableHead className="text-right">تاريخ الفاتورة</TableHead>
                   <TableHead className="text-right">المبلغ الإجمالي</TableHead>
                   <TableHead className="text-right">التصاميم</TableHead>
@@ -621,7 +622,7 @@ export const PrintInvoices = () => {
             </Button>
             <Button onClick={handleSubmit} disabled={submitting} className="gap-2">
               <Printer className="h-4 w-4" />
-              {submitting ? 'جاري الحفظ...' : 'حفظ الفاتورة'}
+              {submitting ? 'جاري ا��حفظ...' : 'حفظ الفاتورة'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -648,7 +649,7 @@ export const PrintInvoices = () => {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">العميل</p>
+                  <p className="text-sm text-muted-foreground">��لعميل</p>
                   <p className="text-base font-semibold">{selectedInvoice.customer_name || 'غير محدد'}</p>
                 </div>
                 <div>
