@@ -28,9 +28,37 @@ interface PrintInvoice {
   notes: string | null;
   design_face_a_path: string | null;
   design_face_b_path: string | null;
+  invoice_type: string | null;
   created_at: string;
   updated_at: string;
 }
+
+interface PrintItemRow {
+  id: string;
+  invoice_id?: string | null;
+  size: string | null;
+  width: number | null;
+  height: number | null;
+  quantity: number | null;
+  total_faces: number | null;
+  total_area: number | null;
+  price_per_meter: number | null;
+  total_price: number | null;
+  notes: string | null;
+}
+
+const invoiceTypeOptions = [
+  { value: 'print_invoice', label: 'فاتورة العميل' },
+  { value: 'print_shop', label: 'فاتورة المطبعة' },
+  { value: 'work_order', label: 'أمر طباعة' },
+] as const;
+
+const invoiceTypeLabels = invoiceTypeOptions.reduce<Record<string, string>>((acc, option) => {
+  acc[option.value] = option.label;
+  return acc;
+}, {});
+
+const defaultInvoiceType = 'print_invoice';
 
 interface CustomerOption {
   id: string;
