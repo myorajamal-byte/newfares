@@ -95,11 +95,15 @@ export const PrintInvoices = () => {
     totalAmount: '',
     notes: '',
     invoiceNumber: generateInvoiceNumber(),
+    invoiceType: defaultInvoiceType,
   });
   const [faceAFile, setFaceAFile] = useState<File | null>(null);
   const [faceBFile, setFaceBFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [contractsLoading, setContractsLoading] = useState(false);
+  const [printItems, setPrintItems] = useState<PrintItemRow[]>([]);
+  const [printItemsLoading, setPrintItemsLoading] = useState(false);
+  const [printItemsError, setPrintItemsError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
