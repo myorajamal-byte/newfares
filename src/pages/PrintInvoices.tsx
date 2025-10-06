@@ -212,7 +212,7 @@ export const PrintInvoices = () => {
 
       if (error) {
         console.error(error);
-        setPrintItemsError('فشل في تحميل عناصر الطباع��');
+        setPrintItemsError('فشل في تحميل عناصر الطباعة');
         return;
       }
 
@@ -338,6 +338,7 @@ export const PrintInvoices = () => {
         notes: formState.notes || null,
         design_face_a_path: designAPath,
         design_face_b_path: designBPath,
+        invoice_type: formState.invoiceType,
       };
 
       const { error } = await supabase.from('printed_invoices').insert(payload);
@@ -601,7 +602,7 @@ export const PrintInvoices = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">ملاحظات للمطبعة</Label>
+              <Label htmlFor="notes">ملاحظات للمطبع��</Label>
               <Textarea
                 id="notes"
                 value={formState.notes}
