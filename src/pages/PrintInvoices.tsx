@@ -85,7 +85,7 @@ export const PrintInvoices = () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('print_invoices')
+        .from('printed_invoices')
         .select('*')
         .order('invoice_date', { ascending: false });
 
@@ -278,7 +278,7 @@ export const PrintInvoices = () => {
         design_face_b_path: designBPath,
       };
 
-      const { error } = await supabase.from('print_invoices').insert(payload);
+      const { error } = await supabase.from('printed_invoices').insert(payload);
 
       if (error) {
         console.error(error);
