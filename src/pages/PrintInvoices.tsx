@@ -178,7 +178,7 @@ export const PrintInvoices = () => {
       setCustomers(transformed);
     } catch (error) {
       console.error(error);
-      toast.error('حدث خطأ أثناء تحميل العملاء');
+      toast.error('حدث خطأ أثناء ت��ميل العملاء');
     }
   };
 
@@ -723,6 +723,54 @@ export const PrintInvoices = () => {
                 <div className="rounded-lg border bg-muted/30 p-3 text-sm leading-relaxed">
                   {selectedInvoice.notes || 'لا توجد ملاحظات'}
                 </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">عناصر الطباعة</p>
+                {printItemsLoading ? (
+                  <div className="rounded-lg border p-4 text-center text-sm text-muted-foreground">
+                    جاري تحميل عناصر الطباعة...
+                  </div>
+                ) : printItemsError ? (
+                  <div className="rounded-lg border p-4 text-center text-sm text-destructive">
+                    {printItemsError}
+                  </div>
+                ) : printItems.length === 0 ? (
+                  <div className="rounded-lg border p-4 text-center text-sm text-muted-foreground">
+                    لا توجد عناصر طباعة مرتبطة بهذه الفاتورة
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">المقاس</TableHead>
+                          <TableHead className="text-right">العرض (م)</TableHead>
+                          <TableHead className="text-right">الارتفاع (م)</TableHead>
+                          <TableHead className="text-right">الكمية</TableHead>
+                          <TableHead className="text-right">إجمالي الأوجه</TableHead>
+                          <TableHead className="text-right">إجمالي المساحة (م²)</TableHead>
+                          <TableHead className="text-right">سعر المتر</TableHead>
+                          <TableHead className="text-right">الإجمالي</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {printItems.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="text-right">{item.size || '—'}</TableCell>
+                            <TableCell className="text-right">{formatNumericValue(item.width)}</TableCell>
+                            <TableCell className="text-right">{formatNumericValue(item.height)}</TableCell>
+                            <TableCell className="text-right">{formatNumericValue(item.quantity)}</TableCell>
+                            <TableCell className="text-right">{formatNumericValue(item.total_faces)}</TableCell>
+                            <TableCell className="text-right">{formatNumericValue(item.total_area)}</TableCell>
+                            <TableCell className="text-right">{formatNumericValue(item.price_per_meter)}</TableCell>
+                            <TableCell className="text-right">{formatNumericValue(item.total_price)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
