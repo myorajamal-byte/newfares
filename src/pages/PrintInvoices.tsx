@@ -208,12 +208,13 @@ export const PrintInvoices = () => {
       invoiceDate: new Date().toISOString().slice(0, 10),
       totalAmount: '',
       notes: '',
-      invoiceNumber: generateInvoiceNumber(),
-    });
-    setFaceAFile(null);
-    setFaceBFile(null);
-    setContracts([]);
-  };
+    invoiceNumber: generateInvoiceNumber(),
+    invoiceType: defaultInvoiceType,
+  });
+  setFaceAFile(null);
+  setFaceBFile(null);
+  setContracts([]);
+};
 
   const closeAddDialog = () => {
     setAddDialogOpen(false);
