@@ -212,7 +212,7 @@ export const PrintInvoices = () => {
 
       if (error) {
         console.error(error);
-        setPrintItemsError('فشل في تحميل عناصر الطباعة');
+        setPrintItemsError('فشل في تحميل عناصر الطباع��');
         return;
       }
 
@@ -553,7 +553,7 @@ export const PrintInvoices = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="invoiceNumber">رقم الفاتورة</Label>
                 <Input
@@ -563,6 +563,27 @@ export const PrintInvoices = () => {
                     setFormState((prev) => ({ ...prev, invoiceNumber: event.target.value }))
                   }
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="invoiceType">نوع الفاتورة</Label>
+                <Select
+                  value={formState.invoiceType}
+                  onValueChange={(value) =>
+                    setFormState((prev) => ({ ...prev, invoiceType: value }))
+                  }
+                >
+                  <SelectTrigger id="invoiceType">
+                    <SelectValue placeholder="اختر نوع الفاتورة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {invoiceTypeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
