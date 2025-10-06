@@ -130,6 +130,7 @@ export const PrintInvoices = () => {
       const normalized: PrintInvoice[] = (data || []).map((row) => ({
         ...row,
         total_amount: row.total_amount === null || row.total_amount === undefined ? null : Number(row.total_amount),
+        invoice_type: row.invoice_type ?? null,
       }));
 
       setInvoices(normalized);
@@ -602,7 +603,7 @@ export const PrintInvoices = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="notes">ملاحظات للمطبع��</Label>
+              <Label htmlFor="notes">ملاحظات للمطبعة</Label>
               <Textarea
                 id="notes"
                 value={formState.notes}
