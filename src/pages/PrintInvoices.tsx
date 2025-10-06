@@ -658,6 +658,14 @@ export const PrintInvoices = () => {
                   <p className="text-base font-semibold">{selectedInvoice.contract_number}</p>
                 </div>
                 <div>
+                  <p className="text-sm text-muted-foreground">نوع الفاتورة</p>
+                  <p className="text-base font-semibold">
+                    {selectedInvoice.invoice_type
+                      ? invoiceTypeLabels[selectedInvoice.invoice_type] || selectedInvoice.invoice_type
+                      : 'غير محدد'}
+                  </p>
+                </div>
+                <div>
                   <p className="text-sm text-muted-foreground">اسم المطبعة</p>
                   <p className="text-base font-semibold">{selectedInvoice.printer_name}</p>
                 </div>
