@@ -212,7 +212,7 @@ export const PrintInvoices = () => {
 
       if (error) {
         console.error(error);
-        setPrintItemsError('فشل في تحميل عناصر الط��اعة');
+        setPrintItemsError('فشل في تحميل عناصر الطباعة');
         return;
       }
 
@@ -253,6 +253,9 @@ export const PrintInvoices = () => {
       formattedDate: invoice.invoice_date
         ? format(new Date(invoice.invoice_date), 'd MMMM yyyy', { locale: ar })
         : '',
+      formattedType: invoice.invoice_type
+        ? invoiceTypeLabels[invoice.invoice_type] || invoice.invoice_type
+        : 'غير محدد',
     }));
   }, [invoices]);
 
@@ -374,7 +377,7 @@ export const PrintInvoices = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">فواتير الطباعة</h1>
-          <p className="text-muted-foreground">إدارة جميع فواتير الطباعة الخاصة بالعملاء وتصاميم الطباعة</p>
+          <p className="text-muted-foreground">إ��ارة جميع فواتير الطباعة الخاصة بالعملاء وتصاميم الطباعة</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
