@@ -338,6 +338,8 @@ export const PrintInvoices = () => {
   const closeDetails = () => {
     setSelectedInvoice(null);
     setDetailsDialogOpen(false);
+    setPrintItems([]);
+    setPrintItemsError(null);
   };
 
   return (
