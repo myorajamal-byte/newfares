@@ -14,11 +14,14 @@ export default function SharedBillboards() {
   const load = async () => {
     setLoading(true);
     try {
-      // Fetch all columns then filter client-side to avoid schema mismatch between environments
-      const { data, error } = await supabase.from('billboards').select('*').limit(1000);
+      // اقر�� من أعمدة الشراكة مباشرة
+      const { data, error } = await supabase
+        .from('billboards')
+        .select('*')
+        .or('is_partnership.eq.true,partner_companies.not.is.null')
+        .order('updated_at', { ascending: false });
       if (error) throw error;
-      const listData = Array.isArray(data) ? (data as any[]).filter(d => Boolean(d?.is_partnership || d?.partner_companies || d?.Partner_Companies)) : [];
-      setList(listData || []);
+      setList(Array.isArray(data) ? data : []);
     } catch (e:any) {
       // Log full error for debugging and show a readable message to the user
       console.error('load shared billboards', e, { message: e?.message, details: e?.details, hint: e?.hint });
@@ -90,7 +93,7 @@ export default function SharedBillboards() {
   };
 
   const removeFromPartnership = async (bb: any) => {
-    const confirmed = window.confirm('هل تريد إزالة هذه اللوحة من الشراك��؟');
+    const confirmed = window.confirm('هل تريد إزالة هذه اللوحة م�� الشراك��؟');
     if (!confirmed) return;
     try {
       const { error } = await supabase
@@ -121,6 +124,7 @@ export default function SharedBillboards() {
                   <TableHead>المقاس</TableHead>
                   <TableHead>رأس المال</TableHead>
                   <TableHead>المتبقي</TableHead>
+                  <TableHead>شراكة</TableHead>
                   <TableHead>الشركات المشاركة</TableHead>
                   <TableHead>إجراء</TableHead>
                 </TableRow>
@@ -134,6 +138,12 @@ export default function SharedBillboards() {
                       <TableCell>{bb.Size || bb.size}</TableCell>
                       <TableCell>{(Number(bb.capital)||0).toLocaleString()} د.ل</TableCell>
                       <TableCell>{(Number(bb.capital_remaining)||0).toLocaleString()} د.ل</TableCell>
+                      <TableCell>
+                        <label className="inline-flex items-center gap-2">
+                          <input type="checkbox" checked={!!bb.is_partnership} readOnly className="accent-primary w-4 h-4" />
+                          <span className="text-xs">{bb.is_partnership ? 'مفعلة' : 'غير مفعلة'}</span>
+                        </label>
+                      </TableCell>
                       <TableCell>{Array.isArray(bb.partner_companies) ? (bb.partner_companies.filter(Boolean).join(', ')) : (bb.partner_companies || '')}</TableCell>
                       <TableCell>
                         <div className="flex gap-2 items-center">
