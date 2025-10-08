@@ -42,7 +42,7 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
   // تحديد حالة اللوحة
   const hasActiveContract = !!(contractInfo || billboard.Contract_Number);
   const isAvailable = !hasActiveContract || billboard.Status === 'متاح' || billboard.Status === 'available';
-  const isMaintenance = billboard.Status === 'صيانة' || billboard.Status === 'maintenance';
+  const isMaintenance = billboard.Status === 'صيا��ة' || billboard.Status === 'maintenance';
   
   let statusLabel = 'متاح';
   let statusClass = 'bg-green-500 hover:bg-green-600';
@@ -73,6 +73,14 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
 
   const daysRemaining = getDaysRemaining();
   const isNearExpiry = daysRemaining !== null && daysRemaining <= 20 && daysRemaining > 0;
+
+  // Determine if billboard is shared (partnership)
+  const isShared = Boolean(
+    (billboard as any).is_partnership ||
+    (billboard as any).Is_Partnership ||
+    (billboard as any).shared ||
+    (billboard as any).isShared
+  );
 
   const initialLocal = (billboard as any).image_name ? `/image/${(billboard as any).image_name}` : ((billboard.Image_URL && billboard.Image_URL.startsWith('/')) ? billboard.Image_URL : ((billboard.Image_URL && !billboard.Image_URL.startsWith('http')) ? `/image/${billboard.Image_URL}` : ''));
   const remoteUrl = (billboard as any).Image_URL && (billboard as any).Image_URL.startsWith('http') ? (billboard as any).Image_URL : '';
@@ -167,6 +175,15 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
               <span className="text-muted-foreground">عدد الأوجه:</span>{' '}
               <span className="font-medium">{billboard.Faces_Count || '1'}</span>
             </div>
+            {isShared && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">شراكة:</span>
+                <label className="inline-flex items-center gap-2">
+                  <input type="checkbox" checked readOnly className="accent-primary w-4 h-4" />
+                  <span className="text-xs text-foreground">مشتركة</span>
+                </label>
+              </div>
+            )}
           </div>
 
           {/* معلومات العقد المحسنة - تنسيق يمين ويسار */}
