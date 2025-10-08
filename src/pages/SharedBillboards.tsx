@@ -109,21 +109,24 @@ export default function SharedBillboards() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {list.map(bb => (
-                  <TableRow key={bb.id}>
-                    <TableCell className="font-medium">{bb.Billboard_Name || bb.name}</TableCell>
-                    <TableCell>{bb.Size || bb.size}</TableCell>
-                    <TableCell>{(Number(bb.capital)||0).toLocaleString()} د.ل</TableCell>
-                    <TableCell>{(Number(bb.capital_remaining)||0).toLocaleString()} د.ل</TableCell>
-                    <TableCell>{Array.isArray(bb.partner_companies) ? (bb.partner_companies.join(', ')) : bb.partner_companies}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2 items-center">
-                        <Input type="number" placeholder="مبلغ الإيجار" value={rentAmountById[bb.id] || ''} onChange={(e)=> setRentAmountById(p => ({ ...p, [bb.id]: Number(e.target.value) }))} />
-                        <Button onClick={() => applyRent(bb)}>تطبيق الإيجار</Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {list.map((bb, i) => {
+                  const rowKey = String(bb.id ?? bb.ID ?? bb.Billboard_ID ?? `${bb.Billboard_Name || bb.name || 'bb'}-${i}`);
+                  return (
+                    <TableRow key={rowKey}>
+                      <TableCell className="font-medium">{bb.Billboard_Name || bb.name}</TableCell>
+                      <TableCell>{bb.Size || bb.size}</TableCell>
+                      <TableCell>{(Number(bb.capital)||0).toLocaleString()} د.ل</TableCell>
+                      <TableCell>{(Number(bb.capital_remaining)||0).toLocaleString()} د.ل</TableCell>
+                      <TableCell>{Array.isArray(bb.partner_companies) ? (bb.partner_companies.filter(Boolean).join(', ')) : (bb.partner_companies || '')}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2 items-center">
+                          <Input type="number" placeholder="مبلغ الإيجار" value={rentAmountById[String(bb.id)] || ''} onChange={(e)=> setRentAmountById(p => ({ ...p, [String(bb.id)]: Number(e.target.value) }))} />
+                          <Button onClick={() => applyRent(bb)}>تطبيق الإيجار</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
