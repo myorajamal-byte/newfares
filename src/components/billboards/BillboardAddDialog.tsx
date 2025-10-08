@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { Upload } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -78,6 +79,24 @@ export const BillboardAddDialog: React.FC<BillboardAddDialogProps> = ({
   // ✅ NEW: State for district input and suggestions
   const [districtInput, setDistrictInput] = useState('');
   const [showDistrictSuggestions, setShowDistrictSuggestions] = useState(false);
+
+  // ✅ NEW: Partners options
+  const [partnersOptions, setPartnersOptions] = useState<{ label: string; value: string }[]>([]);
+  useEffect(() => {
+    const loadPartners = async () => {
+      try {
+        const { data, error } = await supabase.from('partners').select('name').order('name');
+        if (!error) {
+          const opts = (data || [])
+            .map((p: any) => String(p?.name || '').trim())
+            .filter(Boolean)
+            .map((name: string) => ({ label: name, value: name }));
+          setPartnersOptions(opts);
+        }
+      } catch {}
+    };
+    if (addOpen && addForm.is_partnership) loadPartners();
+  }, [addOpen, addForm.is_partnership]);
 
   // ✅ NEW: Get unique districts from all billboards
   const availableDistricts = useMemo(() => {
@@ -500,11 +519,14 @@ export const BillboardAddDialog: React.FC<BillboardAddDialogProps> = ({
           {addForm.is_partnership && (
             <>
               <div className="lg:col-span-2">
-                <Label className="text-sm text-foreground">الشركات المشاركة (فصل بالفواصل)</Label>
-                <Input 
-                  className="text-sm bg-input border-border text-foreground" 
-                  value={(Array.isArray(addForm.partner_companies)? addForm.partner_companies.join(', ') : addForm.partner_companies || '')} 
-                  onChange={(e)=> setAddForm((p:any)=>({...p, partner_companies: e.target.value}))} 
+                <Label className="text-sm text-foreground">الشركات المشاركة</Label>
+                <MultiSelect
+                  options={partnersOptions}
+                  value={Array.isArray(addForm.partner_companies) ? addForm.partner_companies : (String(addForm.partner_companies||'').split(',').map(s=>s.trim()).filter(Boolean))}
+                  onChange={(vals)=> setAddForm((p:any)=>({...p, partner_companies: vals}))}
+                  placeholder={partnersOptions.length ? 'اختر شركات مشاركة' : 'لا توجد شركات مسجلة'}
+                  emptyText="لا توجد شركات"
+                  className="mt-2"
                 />
               </div>
               <div>

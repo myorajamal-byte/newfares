@@ -38,7 +38,7 @@ export const PrintFiltersDialog: React.FC<PrintFiltersDialogProps> = ({
   uniqueAdTypes
 }) => {
   // Print available billboards function with filters
-  const printAvailableBillboards = () => {
+  const printAvailableBillboards = (withLogo: boolean) => {
     try {
       // Filter available billboards first
       let availableBillboards = billboards.filter((billboard: any) => {
@@ -112,6 +112,7 @@ export const PrintFiltersDialog: React.FC<PrintFiltersDialogProps> = ({
             .map((pageRows) => `
               <div class="template-container page">
                 <img src="/mt1.svg" alt="خلفية جدول اللوحات" class="template-image" onerror="console.warn('Failed to load mt1.svg')" />
+                ${withLogo ? `<img src="/logofares.svg" alt="شعار" class="logo" />` : ''}
                 <div class="table-area">
                   <table class="btable" dir="rtl">
                     <colgroup>
@@ -161,6 +162,7 @@ export const PrintFiltersDialog: React.FC<PrintFiltersDialogProps> = ({
             html, body { width: 100% !important; height: 100% !important; overflow: hidden; font-family: 'Noto Sans Arabic','Doran','Arial Unicode MS',Arial,sans-serif; direction: rtl; text-align: right; background: #fff; color: #000; }
             .template-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; display: block; }
             .template-image { position: absolute; inset: 0; width: 100% !important; height: 100% !important; object-fit: cover; object-position: center; z-index: 1; display: block; }
+            .logo { position: absolute; top: 8mm; left: 12mm; width: 60mm; height: auto; z-index: 15; }
             .page { page-break-after: always; page-break-inside: avoid; }
             .table-area { position: absolute; top: 63.53mm; left: 12.8765mm; right: 12.8765mm; z-index: 20; }
             .btable { width: 100%; border-collapse: collapse; border-spacing: 0; font-size: 8px; font-family: 'Doran','Noto Sans Arabic','Arial Unicode MS',Arial,sans-serif; table-layout: fixed; border: 0.2mm solid #000; }
@@ -308,10 +310,17 @@ export const PrintFiltersDialog: React.FC<PrintFiltersDialogProps> = ({
           </Button>
           <Button onClick={() => {
             onOpenChange(false);
-            printAvailableBillboards();
+            printAvailableBillboards(true);
           }} className="gap-2">
             <Printer className="h-4 w-4" />
-            طباعة
+            طباعة مع الشعار
+          </Button>
+          <Button variant="secondary" onClick={() => {
+            onOpenChange(false);
+            printAvailableBillboards(false);
+          }} className="gap-2">
+            <Printer className="h-4 w-4" />
+            طباعة بدون الشعار
           </Button>
         </div>
       </DialogContent>
