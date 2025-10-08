@@ -89,6 +89,23 @@ export default function SharedBillboards() {
     }
   };
 
+  const removeFromPartnership = async (bb: any) => {
+    const confirmed = window.confirm('هل تريد إزالة هذه اللوحة من الشراك��؟');
+    if (!confirmed) return;
+    try {
+      const { error } = await supabase
+        .from('billboards')
+        .update({ is_partnership: false, partner_companies: null })
+        .eq('id', bb.id);
+      if (error) throw error;
+      toast.success('تمت إزالة اللوحة من الشراكة');
+      load();
+    } catch (e:any) {
+      console.error('remove partnership error', e);
+      toast.error(e?.message || 'فشل إزالة اللوحة من الشراكة');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -122,6 +139,7 @@ export default function SharedBillboards() {
                         <div className="flex gap-2 items-center">
                           <Input type="number" placeholder="مبلغ الإيجار" value={rentAmountById[String(bb.id)] || ''} onChange={(e)=> setRentAmountById(p => ({ ...p, [String(bb.id)]: Number(e.target.value) }))} />
                           <Button onClick={() => applyRent(bb)}>تطبيق الإيجار</Button>
+                        <Button variant="destructive" onClick={() => removeFromPartnership(bb)}>إزالة من الشراكة</Button>
                         </div>
                       </TableCell>
                     </TableRow>
