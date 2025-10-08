@@ -78,14 +78,16 @@ export default function Dashboard() {
         setLegacyContracts(legacyData || []);
       }
 
-      // تحميل العقود الجديدة (للمستقبل)
+      // تحميل العقود الجديدة (الجدول الحديث)
       const { data: newData, error: newError } = await supabase
-        .from('contract')
+        .from('contracts')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (newError) {
-        console.error('❌ خطأ في تحميل العقود الجديدة:', newError);
+        const msg = (newError as any)?.message || (typeof newError === 'string' ? newError : JSON.stringify(newError));
+        console.error('❌ خطأ في تحميل العقود الجديدة:', msg, newError);
+        toast.error(`فشل في تحميل العقود الجديدة: ${msg}`);
       } else {
         console.log('✅ تم تحميل العقود الجديدة:', newData?.length || 0, 'عقد');
         setNewContracts(newData || []);
