@@ -162,6 +162,14 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
     return billboard.Level || (billboard as any).level || 'غير محدد';
   };
 
+  // Determine if billboard is shared (partnership)
+  const isShared = Boolean(
+    (billboard as any).is_partnership ||
+    (billboard as any).Is_Partnership ||
+    (billboard as any).shared ||
+    (billboard as any).isShared
+  );
+
   return (
     <Card className="overflow-hidden rounded-2xl bg-card border-border shadow-lg hover:shadow-xl transition-all duration-300">
       <div className="relative">
@@ -252,20 +260,30 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
                   {getFaceCountDisplay()}
                 </Badge>
               </div>
-              
+
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">نوع اللوحة:</span>
                 <Badge variant="outline" className="text-xs font-medium">
                   {getBillboardTypeDisplay()}
                 </Badge>
               </div>
-              
+
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">المستوى:</span>
                 <Badge variant="outline" className="text-xs font-medium">
                   {getLevelDisplay()}
                 </Badge>
               </div>
+
+              {isShared && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">شراكة:</span>
+                  <label className="inline-flex items-center gap-2 text-xs font-medium">
+                    <input type="checkbox" checked readOnly className="accent-primary w-4 h-4" />
+                    <span>مشتركة</span>
+                  </label>
+                </div>
+              )}
             </div>
           </div>
 
@@ -371,7 +389,7 @@ export const BillboardGridCard: React.FC<BillboardGridCardProps> = ({
             </div>
           )}
 
-          {/* معلومات العقد المنتهي للمدير فقط - باستخدام ألوان النظام */}
+          {/* ��علومات العقد المنتهي للمدير فقط - باستخدام ألوان النظام */}
           {isAdmin && contractExpired && (contractId || endDate || customerName) && (
             <div className="mb-4 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
               <div className="flex items-center gap-2 mb-2">
