@@ -14,16 +14,14 @@ export default function SharedBillboards() {
   const load = async () => {
     setLoading(true);
     try {
-      // اقر�� من أعمدة الشراكة مباشرة
       const { data, error } = await supabase
         .from('billboards')
         .select('*')
-        .or('is_partnership.eq.true,partner_companies.not.is.null')
+        .eq('is_partnership', true)
         .order('updated_at', { ascending: false });
       if (error) throw error;
       setList(Array.isArray(data) ? data : []);
     } catch (e:any) {
-      // Log full error for debugging and show a readable message to the user
       console.error('load shared billboards', e, { message: e?.message, details: e?.details, hint: e?.hint });
       const msg = e?.message || (typeof e === 'object' ? JSON.stringify(e, Object.getOwnPropertyNames(e)) : String(e));
       toast.error(msg || 'فشل تحميل اللوحات المشتركة');
