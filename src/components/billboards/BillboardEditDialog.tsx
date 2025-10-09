@@ -8,6 +8,7 @@ import { Upload } from 'lucide-react';
 import { BillboardImage } from '@/components/BillboardImage';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { MultiSelect } from '@/components/ui/multi-select';
 
 interface BillboardEditDialogProps {
   editOpen: boolean;
@@ -69,6 +70,10 @@ export const BillboardEditDialog: React.FC<BillboardEditDialogProps> = ({
   // ✅ NEW: State for district input and suggestions
   const [districtInput, setDistrictInput] = useState('');
   const [showDistrictSuggestions, setShowDistrictSuggestions] = useState(false);
+
+  // State for partners list from database
+  const [partners, setPartners] = useState<Array<{id: string, name: string}>>([]);
+  const [loadingPartners, setLoadingPartners] = useState(false);
 
   // ✅ NEW: Get unique districts from all billboards
   const availableDistricts = useMemo(() => {
@@ -276,6 +281,31 @@ export const BillboardEditDialog: React.FC<BillboardEditDialogProps> = ({
     }
     setSaving(false);
   };
+
+  // Load partners from database
+  useEffect(() => {
+    const loadPartners = async () => {
+      setLoadingPartners(true);
+      try {
+        const { data, error } = await supabase
+          .from('partners')
+          .select('id, name')
+          .order('name');
+
+        if (error) throw error;
+        setPartners(data || []);
+      } catch (error) {
+        console.error('Error loading partners:', error);
+        toast.error('فشل تحميل قائمة الشركاء');
+      } finally {
+        setLoadingPartners(false);
+      }
+    };
+
+    if (editOpen) {
+      loadPartners();
+    }
+  }, [editOpen]);
 
   // Update image name when billboard name changes
   useEffect(() => {
@@ -507,12 +537,58 @@ export const BillboardEditDialog: React.FC<BillboardEditDialogProps> = ({
           {editForm.is_partnership && (
             <>
               <div className="lg:col-span-2">
-                <Label className="text-sm text-foreground">الشركات المشاركة (فصل بالفواصل)</Label>
-                <Input 
-                  className="text-sm bg-input border-border text-foreground" 
-                  value={(Array.isArray(editForm.partner_companies)? editForm.partner_companies.join(', ') : editForm.partner_companies || '')} 
-                  onChange={(e)=> setEditForm((p:any)=>({...p, partner_companies: e.target.value}))} 
-                />
+                <Label className="text-sm text-foreground">الشركات المشاركة</Label>
+                {loadingPartners ? (
+                  <div className="text-sm text-muted-foreground">جاري تحميل الشركاء...</div>
+                ) : (
+                  <Select
+                    value={Array.isArray(editForm.partner_companies) && editForm.partner_companies.length > 0 ? editForm.partner_companies[0] : ''}
+                    onValueChange={(v) => {
+                      const currentPartners = Array.isArray(editForm.partner_companies) ? editForm.partner_companies : [];
+                      if (v && !currentPartners.includes(v)) {
+                        setEditForm((p: any) => ({ ...p, partner_companies: [...currentPartners, v] }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="text-sm bg-input border-border text-foreground">
+                      <SelectValue placeholder="اختر الشركات المشاركة">
+                        {Array.isArray(editForm.partner_companies) && editForm.partner_companies.length > 0
+                          ? editForm.partner_companies.join(', ')
+                          : 'اختر الشركات المشاركة'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      {partners.map((partner) => (
+                        <SelectItem
+                          key={partner.id}
+                          value={partner.name}
+                          className="text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                        >
+                          {partner.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {Array.isArray(editForm.partner_companies) && editForm.partner_companies.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {editForm.partner_companies.map((partner: string, idx: number) => (
+                      <div key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-secondary text-secondary-foreground rounded text-sm">
+                        <span>{partner}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newPartners = editForm.partner_companies.filter((_: any, i: number) => i !== idx);
+                            setEditForm((p: any) => ({ ...p, partner_companies: newPartners }));
+                          }}
+                          className="ml-1 text-destructive hover:text-destructive/80"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <Label className="text-sm text-foreground">رأس مال اللوحة</Label>
